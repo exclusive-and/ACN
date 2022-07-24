@@ -29,35 +29,89 @@
 -- result in short circuits if one cell grounds the wire while another
 -- cell powers it.
 --
--- = Visualizing an Example
+-- = Worked Example
 --
 -- To properly understand ACN, let's return to Haskell-land for a moment
--- and consider a familiar closure:
+-- and consider a simple closure:
 --
 -- @
 -- example = \\a b -> let c = a + b in c
 -- @
 --
--- We can decompose this closure into three parts. First, it receives
--- data from the rest of the program through the input binders. Second,
--- it computes its own result. Finally, it transmits that result through
--- its output. The decomposition is comparable to a circuit, with input
--- wires, internal logic, and CMOS-controlled outputs. In fact, this is
--- exactly the shape of an ACN declaration:
+-- How would the same closure be represented in ACN? First of all, every
+-- closure in normal form corresponds to an ACN component. Components
+-- take the same approach for inputs as GHC's STG language does: each
+-- input is a special binder that names a slot where we may insert some
+-- argument at the closure's call site:
 --
 -- @
--- 'InstDecl' [cNet] [] addId exampleId []
---     $ 'IndexedPortMap'
---         [ ('In' , 'Signed' 32, aId)
---         , ('In' , 'Signed' 32, bId)
---         , ('Out', 'Signed' 32, cId)
---         ]
+-- let aNet = 'NetDeclaration' Nothing aId ('Signed' 32) Nothing
+--     bNet = 'NetDeclaration' Nothing bId ('Signed' 32) Nothing
 -- @
 --
--- We have a component instance in place of a let-binding, which takes
--- inputs from other parts of the circuit, computes a result, and then
--- transmits the result on the output net. Both forms describe a node in
--- a graph, with edges pointing to the origins of the inputs.
+-- Next, there's the function of addition. There are a few ways such a
+-- function may be compiled: it could have a primitive or black box form
+-- substituted in its place by the HDL codegen. But for the sake of
+-- demonstration, we will assume that it's also a closure represented by
+-- a component whose top-level binder is @addId@. To use the component
+-- in this circuit, we must instantiate it with:
+--
+-- @
+-- let decl = 'InstDecl' [cNet] [] addId addInstanceId []
+--                $ 'IndexedPortMap'
+--                    [ ('In' , 'Signed' 32, aId)
+--                    , ('In' , 'Signed' 32, bId)
+--                    , ('Out', 'Signed' 32, cId)
+--                    ]
+-- @
+--
+-- Finally, we can populate the contents of the component. Note that the
+-- extra list corresponds to any internal logic that we don't wish to
+-- output from the component, like binders in a let-expression that don't
+-- appear in the body. The fully specified component is:
+--
+-- @
+-- 'AcnComponent' exampleId [aNet, bNet] [] [decl]
+-- @
+--
+-- On the other side, we can generate a Verilog description of this logic.
+-- ACN components correspond directly to Verilog modules, so we start
+-- immediately with that:
+--
+-- @
+-- module example
+-- @
+--
+-- Where things get interesting is the generation of net declarations.
+-- Verilog expects nets to be declared in advance, and also expects them to
+-- be annotated with how they're meant to be assigned. ACN doesn't
+-- distinguish between continuous and latching assignments the way Verilog
+-- does, so there's a trick to this step. What ACN does have is a lot of
+-- knowledge about how nets actually get used: since an ACN declaration is
+-- responsible for any nets that it assigns to, we can always determine
+-- their behaviour by examining the declarations that create them.
+-- Specifically, @cNet@ occurs in an instance declaration. Instances will
+-- always drive their nets continuously, so we know that it should be
+-- declared as:
+--
+-- @
+--     ( input [31:0] a
+--     , input [31:0] b
+--     , output wire [31:0] c
+--     );
+-- @
+--
+-- Normally we'd then use the same trick to declare internal logic nets and
+-- then generate the internal logic itself. This component has none, so we
+-- can skip those steps. After that, we finally generate the code that
+-- assigns to outputs; in this case our instantiation:
+--
+-- @
+--   add addInstance
+--     (a, b, c);
+--
+-- endmodule
+-- @
 --
 module Netlist.Acn where
 
