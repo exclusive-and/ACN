@@ -49,7 +49,7 @@
 --     bNet = 'NetDeclaration' Nothing bId ('Signed' 32) Nothing
 -- @
 --
--- Next, there's the function of addition. There are a few ways such a
+-- Next, we must represent addition. There are a few ways such a
 -- function may be compiled: it could have a primitive or black box form
 -- substituted in its place by the HDL codegen. But for the sake of
 -- demonstration, we will assume that it's also a closure represented by
@@ -165,20 +165,38 @@ data AcnComponent
     deriving (Show, Generic, NFData)
 
 -- |
--- ACN language declarations.
+-- ACN declarations have two basic responsibilities:
 --
--- The /Assignment/ part of /Assignment/-Creates-Net refers to any
--- kind of net value judgment. So, an ACN declaration has two basic
--- responsibilities:
+--  (1) describe the structure of some hardware process; and
+--  (2) create all the nets assigned to by that process.
 --
---  * describe the structure of some hardware process; and
---  * specify all the nets driven by that process.
+-- Satisfying responsibility (2) has some interesting ramifications for
+-- the representation of logic designs. First, as we've seen, this
+-- allows ACN to know a lot about the use of nets. We can easily determine
+-- target HDL annotations for net codegen. We may even be able to make
+-- more nuanced decisions about the annotations: assessing the advantages
+-- of many different implementations on a problem-specific basis.
+-- 
+-- The approach also applies some restrictions to what we may do. For
+-- example, some circuits use tristate logic rather than multiplexers
+-- for decisions. In Verilog, we might have something like:
+-- 
+-- @
+-- wire x;
+-- assign x = p1 ? v1 : 1'bz;
+-- assign x = p2 ? v2 : 1'bz;
+-- @
+-- 
+-- Naively, we might try to implement this with two @'Assignment'@
+-- declarations. But we run into a problem right away: since each declaration
+-- must create its own result net, there's no way for both assignments to
+-- assign to the same net, as in the Verilog code. The only way around the
+-- restriction in this case is a particular conditional assign declaration
+-- that does all the possible tri-state assignments within the same block
+-- so that they may all use the same result net.
 --
--- See Note [ACN to HDL Net Usage] for more information on how on-site
--- net declarations translate into HDL net declarations.
---
--- See Note [Multiplexing Assignments] for details regarding
--- conditional assignments and three-valued logic.
+-- See Note [ACN to HDL Net Usage] for more information on how on-site net
+-- declarations translate into HDL net declarations.
 --
 data AcnDeclaration
     = Assignment
@@ -210,23 +228,6 @@ data AcnDeclaration
 instance NFData AcnDeclaration where
     rnf x = x `seq` ()
 
--- Note [Multiplexing Assignments]
---
--- Because nets can only be assigned to once, there are some tristate
--- logic tricks we can't do. For example, no ACN declaration can result
--- in
---
--- @
--- wire x;
--- assign x = p1 ? v1 : 1'bz;
--- assign x = p2 ? v2 : 1'bz;
--- @
---
--- Fortunately, even though we can't do this tristate logic, neither
--- can the FPGAs we're targetting. FPGAs use CMOS logic, which is
--- only two-valued; we don't lose generality by forcing choices to use
--- multiplexers.
-
 data CommentOrDirective
     = Comment   Text
     | Directive Text
@@ -246,9 +247,6 @@ data CommentOrDirective
 --
 -- for procedural assignments.
 --
--- See Note [ACN to HDL Net Usage] for more information on generating
--- appropriate HDL net declarations from ACN declarations.
---
 data NetDeclaration
     = NetDeclaration
         { netComment    :: !(Maybe Text)
@@ -257,32 +255,6 @@ data NetDeclaration
         , initVal       :: Maybe Expr
         }
     deriving (Show, Generic, NFData)
-
--- Note [ACN to HDL Net Usage]
---
--- Unlike Verilog and VHDL, ACN doesn't care about the usage of its nets.
--- Since a net is declared on-site, there is no need to track whether a
--- net is continuous or procedural in its assignments.
---
--- To target Verilog and VHDL, the codegen net declaration pass examines
--- the assignment sites. If we have the ACN assignment site
---
--- @
--- 'CondAssignment' res scrut scrutTy alts
--- @
---
--- then we can determine that we should declare @res@ in Verilog as
---
--- > reg <res>;
---
--- In VHDL, the same conditional assignment declaration is rendered
--- continuously, so the VHDL net declaration pass determines to declare @res@
---
--- > signal <res>;
---
--- What matters is that all the information about the assignment site needed
--- to determine net usage is also present in the structure of the site's
--- declaration.
 
 -- | Net names and references.
 --
