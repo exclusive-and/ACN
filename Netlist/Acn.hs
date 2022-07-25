@@ -7,6 +7,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
+-- Module       : Acn
+-- Description  : ACN Hardware Description Language
+-- Maintainer   : xandgate@gmail.com
+-- Stability    : experimental
+-- Language     : Haskell2010
+-- 
 -- = Assignment-Creates-Net (ACN) Hardware Description Language
 --
 -- ACN is a single static assignment language for algorithmically
@@ -96,10 +102,10 @@
 --     );
 -- @
 --
--- Normally we'd then use the same trick to declare internal logic nets and
--- then generate the internal logic itself. This component has none, so we
--- can skip those steps. After that, we finally generate the code that
--- assigns to outputs; in this case our instantiation:
+-- Normally we'd then use the same trick to declare internal logic nets,
+-- and then generate the internal logic itself. This component has no
+-- internal logic, so we can skip those steps. After that, we generate
+-- the code that assigns to outputs; in this case our instantiation:
 --
 -- @
 --   add addInstance
@@ -107,7 +113,34 @@
 --
 -- endmodule
 -- @
---
+-- 
+-- = Some Peculiarities and Black Boxes
+-- 
+-- The ACN approach also applies some restrictions to what we may do.
+-- For example, some circuits use tristate logic rather than multiplexers
+-- for decisions. In Verilog, we might have something like:
+-- 
+-- @
+-- wire x;
+-- assign x = p1 ? v1 : 1'bz;
+-- assign x = p2 ? v2 : 1'bz;
+-- @
+-- 
+-- Naively, we might try to implement this with two @'Assignment'@
+-- declarations. But we run into a problem right away: since each
+-- declaration must create its own result net, there's no way for both
+-- assignments to assign to the same net, as in the Verilog code. The only
+-- way around the restriction in this case is a particular conditional
+-- assignment that does all the possible tri-state assignments within the
+-- same block so that they may all use the same result net.
+-- 
+-- These edge cases are where @'AcnBlackBox'@ comes in handy. If ACN
+-- doesn't represent the exact output we want, we can write a primitive
+-- in the target HDL. The primitive is treated as a black box, and can
+-- be substituted by codegen with the appropriate context. As long as we
+-- still know the declarations of nets exposed by the black box, they
+-- can still be used in a circuit as any other declaration would be.
+-- 
 module Netlist.Acn where
 
 import              Control.DeepSeq
@@ -150,29 +183,11 @@ data AcnComponent
 --  (2) create all the nets assigned to by that process.
 --
 -- Satisfying responsibility (2) has some interesting ramifications for
--- the representation of logic designs. First, as we've seen, this
--- allows ACN to know a lot about the use of nets. We can easily determine
--- target HDL annotations for net codegen. We may even be able to make
--- more nuanced decisions about the annotations: assessing the advantages
--- of many different implementations on a problem-specific basis.
--- 
--- The approach also applies some restrictions to what we may do. For
--- example, some circuits use tristate logic rather than multiplexers
--- for decisions. In Verilog, we might have something like:
--- 
--- @
--- wire x;
--- assign x = p1 ? v1 : 1'bz;
--- assign x = p2 ? v2 : 1'bz;
--- @
--- 
--- Naively, we might try to implement this with two @'Assignment'@
--- declarations. But we run into a problem right away: since each declaration
--- must create its own result net, there's no way for both assignments to
--- assign to the same net, as in the Verilog code. The only way around the
--- restriction in this case is a particular conditional assignment
--- that does all the possible tri-state assignments within the same block
--- so that they may all use the same result net.
+-- the representation of logic designs. As we've seen, this allows ACN to
+-- know a lot about the use of nets. We can easily determine target HDL
+-- annotations for net codegen. We may even be able to make more nuanced
+-- decisions about the annotations: assessing the advantages of many
+-- different implementations on a problem-specific basis.
 --
 data AcnDeclaration
     = Assignment
@@ -191,8 +206,8 @@ data AcnDeclaration
         [()]                        -- ^ Compile-time parameters.
         PortMap                     -- ^ I\/O port configuration.
     | BlackBoxDecl
-        !ClosureFun                 -- ^ Primitive to defer.
-        ClosureContext              -- ^ Calling context.
+        !AcnBlackBox                -- ^ Primitive to defer.
+        BlackBoxContext             -- ^ Calling context.
     | TickDecl
         !CommentOrDirective
         AcnDeclaration              -- ^ Declaration to be annotated.
@@ -216,10 +231,10 @@ data CommentOrDirective
 --
 data NetDeclaration
     = NetDeclaration
-        { netComment    :: !(Maybe Text)
-        , netName       :: !Identifier
-        , netType       :: !NetType
-        , initVal       :: Maybe Expr
+        { netComment    :: !(Maybe Text)    -- ^ Comment describing the net.
+        , netName       :: !Identifier      -- ^ Name of the net.
+        , netType       :: !NetType         -- ^ Net's representable type.
+        , initVal       :: Maybe Expr       -- ^ Optional initial value.
         }
     deriving (Show, Generic, NFData)
 
@@ -263,47 +278,41 @@ data PortMap
 data PortDirection = In | Out
     deriving (Show, Generic, NFData)
 
+
 -- |
--- Context to instantiate a deferred closure into.
--- 
--- Some closure instantiations may be deferred, notably in the case of
--- primitives. When deferring instantiation, we must provide all the
--- necessary context to properly instantiate the closure later.
+-- Some circuit parts are deeply HDL-dependent and aren't easily
+-- represented by ACN itself. To work around this, ACN has circuit
+-- primitives in the target language which that language's codegen
+-- can substitute in the appropriate context.
 --
--- Necessary context for ACN instantiation includes arguments to the
--- closure, and result declarations.
+data AcnBlackBox
+    = PrimBlackBox
+        { boxName           :: Text
+        , boxLibraries      :: [BlackBoxTemplate]
+        , boxImports        :: [BlackBoxTemplate]
+        , boxQsys           :: [((Text, Text), BlackBox)]
+        , boxTokens         :: BlackBox
+        }
+    deriving Show
+
+-- |
+-- The substitution context needed to properly instantiate a black box
+-- into a circuit. The necessary context includes the input nets from
+-- the surrounding circuit, as well as the declaration for any result nets
+-- we wish to expose.
 --
-data ClosureContext
-    = ClosureContext
-        { closTargets       :: [NetDeclaration]
+data BlackBoxContext
+    = BlackBoxContext
+        { boxTargets        :: [NetDeclaration]
         -- ^ Result declarations.
-        , closInputs        :: [ClosureArg]
-        -- ^ Closure arguments.
-        , closFunctions     :: IntMap [(ClosureFun, ClosureContext)]
-        -- ^ Deferred function inputs.
+        , boxInputs         :: [BlackBoxArg]
+        -- ^ Black box arguments.
         }
     deriving Show
 
--- | Closures are usually blackboxes, but they /may/ be deferred functions.
+-- | Hardware black boxes may accept expressions or type-level arguments.
 --
-data ClosureFun
-    = PrimClosure
-        { closName          :: Text
-        , closLibraries     :: [BlackBoxTemplate]
-        , closImports       :: [BlackBoxTemplate]
-        , closQsys          :: [((Text, Text), BlackBox)]
-        , closTokens        :: BlackBox
-        }
-    | FunClosure
-        { closName          :: Text
-        , closIdentifier    :: Identifier
-        , closDeclarations  :: [AcnDeclaration]
-        }
-    deriving Show
-
--- | Hardware closures may accept expressions or type-level arguments.
---
-type ClosureArg = Either (Expr, NetType) NetTyCon
+type BlackBoxArg = Either (Expr, NetType) NetTyCon
 
         
 -- |
@@ -481,10 +490,9 @@ data NetConstr
     deriving (Show, Generic, NFData)
         
 -- |
--- Compute size needed to represent a cartesian type.
---
--- The final size should be the sum of the number of bits for the
--- constructor with the number of bits needed for all fields.
+-- Compute size needed to represent a cartesian type. The final
+-- size should be the sum of the number of bits for the constructor
+-- with the number of bits needed for all fields.
 --
 cartesianSize :: CartesianType -> Size
 cartesianSize cty = constrSize + fieldsSize where
@@ -562,8 +570,8 @@ data Expr
         !Int                        -- ^ High bit index of range.
         !Int                        -- ^ Low bit index of range.
     | BlackBoxE
-        !ClosureFun                 -- ^ Primitive to defer.
-        ClosureContext              -- ^ Calling context.
+        !AcnBlackBox                -- ^ Primitive to defer.
+        BlackBoxContext             -- ^ Calling context.
         !Bool                       -- ^ Maybe enclose in parentheses.
     deriving Show
 
