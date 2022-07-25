@@ -5,11 +5,6 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PatternSynonyms #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TemplateHaskell #-}
-
-{-# LANGUAGE MagicHash #-}
 
 -- |
 -- = Assignment-Creates-Net (ACN) Hardware Description Language
@@ -133,27 +128,11 @@ import              Text.Show (Show (..))
 
 import              Language.Haskell.TH.Syntax (Lift)
 
--- TO REMOVE
-import              GHC.Base (Int (..), isTrue#, (+#), (==#))
-import              GHC.Integer.Logarithms (integerLogBase#)
+import              CeilingLog
 
 
 -- |
 -- ACN top-level component.
---
--- @
--- 'AcnComponent' name
---     [inNet]
---     ['Assignment' logic expr1]
---     ['Assignment' out expr2]
--- @
---
--- corresponds to the STG closure
---
--- > name = \inNet ->
--- >     let { logic = expr1
--- >         ; out   = expr2
--- >         } in out
 --
 data AcnComponent
     = AcnComponent
@@ -191,12 +170,9 @@ data AcnComponent
 -- declarations. But we run into a problem right away: since each declaration
 -- must create its own result net, there's no way for both assignments to
 -- assign to the same net, as in the Verilog code. The only way around the
--- restriction in this case is a particular conditional assign declaration
+-- restriction in this case is a particular conditional assignment
 -- that does all the possible tri-state assignments within the same block
 -- so that they may all use the same result net.
---
--- See Note [ACN to HDL Net Usage] for more information on how on-site net
--- declarations translate into HDL net declarations.
 --
 data AcnDeclaration
     = Assignment
@@ -234,18 +210,9 @@ data CommentOrDirective
     deriving Show
 
 -- |
--- A net declarartion.
---
--- The net declaration @NetDeclaration comment name ty (Just init)@
--- generates either
---
--- > wire <ty> <name> = <init>; // <comment>
---
--- for combinational assignments, or
---
--- > reg <ty> <name> = <init>; // <comment>
---
--- for procedural assignments.
+-- An ACN net declaration contains the name and type information of a net.
+-- Usage annotations should be decided by examining the declarations that
+-- create the nets.
 --
 data NetDeclaration
     = NetDeclaration
@@ -637,17 +604,4 @@ data BlackBox = BlackBox
 data HDL = Verilog | VHDL
     deriving (Show, Generic, NFData)
 
-
-
--- | \x y -> ceiling (logBase x y), x > 1 && y > 0
-clogBase :: Integer -> Integer -> Maybe Int
-clogBase x y | x > 1 && y > 0 =
-  case y of
-    1 -> Just 0
-    _ -> let z1 = integerLogBase# x y
-             z2 = integerLogBase# x (y-1)
-         in  if isTrue# (z1 ==# z2)
-                then Just (I# (z1 +# 1#))
-                else Just (I# z1)
-clogBase _ _ = Nothing
 
