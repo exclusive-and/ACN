@@ -29,33 +29,8 @@
 -- by more than one CMOS cell should be considered an error, as it will
 -- result in short circuits if one cell grounds the wire while another
 -- cell powers it.
--- 
-module Netlist.Acn where
-
-import              Control.DeepSeq
-import              Data.Bool
-import              Data.Eq
-import              Data.IntMap (IntMap (..))
-import qualified    Data.IntMap as IntMap
-import qualified    Data.Kind as Kind
-import              Data.List
-import              Data.Maybe
-import              Data.Text (Text (..))
-import qualified    Data.Text as Text
-import              Data.Typeable (Typeable)
-import              GHC.Generics
-import              GHC.Int
-import              GHC.Stack
-import              Text.Show (Show (..))
-
-import              Language.Haskell.TH.Syntax (Lift)
-
-import              CeilingLog
-
-
--- * Worked Example
--- 
--- $workedExample
+--
+-- = Worked Example
 --
 -- To properly understand ACN, let's return to Haskell-land for a moment
 -- and consider a simple closure:
@@ -138,6 +113,130 @@ import              CeilingLog
 --
 -- endmodule
 -- @
+-- 
+-- = Some Peculiarities and Black Boxes
+-- 
+-- The ACN approach also applies some restrictions to what we may do.
+-- For example, some circuits use tristate logic rather than multiplexers
+-- for decisions. In Verilog, we might have something like:
+-- 
+-- @
+-- wire x;
+-- assign x = p1 ? v1 : 1'bz;
+-- assign x = p2 ? v2 : 1'bz;
+-- @
+-- 
+-- Naively, we might try to implement this with two @'Assignment'@
+-- declarations. But we run into a problem right away: since each
+-- declaration must create its own result net, there's no way for both
+-- assignments to assign to the same net, as in the Verilog code. The only
+-- way around the restriction in this case is a particular conditional
+-- assignment that does all the possible tri-state assignments within the
+-- same block so that they may all use the same result net.
+-- 
+-- These edge cases are where @'AcnBlackBox'@ comes in handy. If ACN
+-- doesn't represent the exact output we want, we can write a primitive
+-- in the target HDL. The primitive is treated as a black box, and can
+-- be substituted by codegen with the appropriate context. As long as we
+-- still know the declarations of nets exposed by the black box, they
+-- can still be used in a circuit as we would any other declaration.
+-- 
+-- Going back to the example circuit, we could imagine addition not as a
+-- component to be instantiated, but as a primitive. That would change
+-- the ACN declaration to look something like:
+-- 
+-- @
+-- 'Assignment' cNet
+--     $ 'BlackBoxE'
+--         (addBB :: 'AcnBlackBox')
+--         ('BlackBoxContext' []
+--             [ Left ('Identifier' aId, 'Signed' 32)
+--             , Left ('Identifier' bId, 'Signed' 32)
+--             ])
+-- @
+-- 
+-- From an appropriately written primitive for @addBB@, the resultant
+-- Verilog could look like:
+-- 
+-- @
+-- assign c = a + b;
+-- @
+-- 
+-- Of course, the reverse process of black box insertion is complicated.
+-- It puts ACN as a language in an interesting position not far off from
+-- Haskell itself. Every C program has an equivalent in Haskell. But it's
+-- not always possible to directly compile those C programs to their
+-- Haskell equivalents. Similarly, every Verilog or VHDL description can
+-- be written in ACN. But while writing a Haskell-to-ACN-to-Verilog
+-- compiler is tractable, writing a Verilog-to-ACN-to-Haskell compiler
+-- is likely very hard. So while ACN is useful algorithmically as an HDL,
+-- using it in one direction might require some extra steps (perhaps a
+-- Verilog to LLHD to ACN approach would work for this purpose).
+-- 
+module Netlist.Acn
+    ( -- * ACN Declarations
+      AcnComponent (..)
+    , AcnDeclaration (..)
+    , CommentOrDirective (..)
+      -- ** Net Declarations
+    , NetDeclaration (..)
+    , Identifier (..)
+    , IdentifierType (..)
+      -- ** Port Maps
+    , PortMap (..)
+    , PortDirection (..)
+      -- ** ACN Black Boxes
+    , AcnBlackBox (..)
+    , BlackBoxContext (..)
+    , BlackBoxArg
+      -- * Netlist Types
+    , NetTyCon (..)
+      -- ** Representable Netlist Types
+    , NetType (..)
+    , Attr' (..)
+    , netTypeSize
+    , Size
+    , CartesianType (..)
+    , NetConstr (..)
+    , cartesianSize
+      -- ** Clock Domains
+    , Domain (..)
+    , DomainName
+    , ActiveEdge (..)
+    , ResetKind (..)
+    , ResetPolarity (..)
+    , InitBehaviour (..)
+      -- * Representable Expressions
+    , Expr (..)
+    , Literal (..)
+    , Bit (..)
+    )
+  where
+
+import              Control.DeepSeq
+import              Data.Bool
+import              Data.Eq
+import              Data.IntMap (IntMap (..))
+import qualified    Data.IntMap as IntMap
+import qualified    Data.Kind as Kind
+import              Data.List
+import              Data.Maybe
+import              Data.Text (Text (..))
+import qualified    Data.Text as Text
+import              Data.Typeable (Typeable)
+import              GHC.Generics
+import              GHC.Int
+import              GHC.Stack
+import              Text.Show (Show (..))
+
+import              Language.Haskell.TH.Syntax (Lift)
+
+import              CeilingLog
+
+
+-- * ACN Declarations
+-- 
+-- $acnDeclarations
 
 -- |
 -- ACN top-level component.
@@ -254,66 +353,9 @@ data PortDirection = In | Out
     deriving (Show, Generic, NFData)
 
 
--- * Some Peculiarities and Black Boxes
+-- ** Black Boxes
 -- 
--- $blackboxes
--- 
--- The ACN approach also applies some restrictions to what we may do.
--- For example, some circuits use tristate logic rather than multiplexers
--- for decisions. In Verilog, we might have something like:
--- 
--- @
--- wire x;
--- assign x = p1 ? v1 : 1'bz;
--- assign x = p2 ? v2 : 1'bz;
--- @
--- 
--- Naively, we might try to implement this with two @'Assignment'@
--- declarations. But we run into a problem right away: since each
--- declaration must create its own result net, there's no way for both
--- assignments to assign to the same net, as in the Verilog code. The only
--- way around the restriction in this case is a particular conditional
--- assignment that does all the possible tri-state assignments within the
--- same block so that they may all use the same result net.
--- 
--- These edge cases are where @'AcnBlackBox'@ comes in handy. If ACN
--- doesn't represent the exact output we want, we can write a primitive
--- in the target HDL. The primitive is treated as a black box, and can
--- be substituted by codegen with the appropriate context. As long as we
--- still know the declarations of nets exposed by the black box, they
--- can still be used in a circuit as we would any other declaration.
--- 
--- Going back to the example circuit, we could imagine addition not as a
--- component to be instantiated, but as a primitive. That would change
--- the ACN declaration to look something like:
--- 
--- @
--- 'Assignment' cNet
---     $ 'BlackBoxE'
---         (addBB :: 'AcnBlackBox')
---         ('BlackBoxContext' []
---             [ Left ('Identifier' aId, 'Signed' 32)
---             , Left ('Identifier' bId, 'Signed' 32)
---             ])
--- @
--- 
--- From an appropriately written primitive for @addBB@, the resultant
--- Verilog could look like:
--- 
--- @
--- assign c = a + b;
--- @
--- 
--- Of course, the reverse process of black box insertion is complicated.
--- It puts ACN as a language in an interesting position not far off from
--- Haskell itself. Every C program has an equivalent in Haskell. But it's
--- not always possible to directly compile those C programs to their
--- Haskell equivalents. Similarly, every Verilog or VHDL description can
--- be written in ACN. But while writing a Haskell-to-ACN-to-Verilog
--- compiler is tractable, writing a Verilog-to-ACN-to-Haskell compiler
--- is likely very hard. So while ACN is useful algorithmically as an HDL,
--- using it in one direction might require some extra steps (perhaps a
--- Verilog to LLHD to ACN approach would work for this purpose).
+-- $acnBlackBoxes
 
 -- |
 -- Some circuit parts are deeply HDL-dependent and aren't easily
@@ -350,7 +392,11 @@ data BlackBoxContext
 --
 type BlackBoxArg = Either (Expr, NetType) NetTyCon
 
-        
+
+-- * Representable Types
+--
+-- $acnTypes
+
 -- |
 -- Net type-like constructors.
 --
@@ -581,6 +627,10 @@ data InitBehaviour
     deriving (Show, Generic, NFData)
 
 
+-- * Netlist Expressions
+--
+-- $acnExpressions
+    
 -- | Well-typed representable expressions.
 --
 data Expr
