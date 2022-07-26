@@ -123,29 +123,29 @@ data AcnComponent
 --
 data AcnDeclaration
     = Assignment
-        !NetDeclaration     -- ^ Created result net.
-        !AcnExpression      -- ^ Expression to assign.
+        !NetDeclaration         -- ^ Created result net.
+        !AcnExpression          -- ^ Expression to assign.
     | CondAssignment
-        !NetDeclaration     -- ^ Created result net.
-        !AcnExpression      -- ^ Scrutinee.
-        !NetType            -- ^ Scrutinee type.
-        [Alternative]       -- ^ Alternatives.
+        !NetDeclaration         -- ^ Created result net.
+        !AcnExpression          -- ^ Expression to scrutinize.
+        !NetType                -- ^ Scrutinee type.
+        [Alternative]           -- ^ Alternatives to choose from.
     | InstDecl
-        [NetDeclaration]    -- ^ Created result nets.
-        [Attr']             -- ^ Instance attributes.
-        !Identifier         -- ^ Component name.
-        !Identifier         -- ^ Instance name.
-        [()]                -- ^ Compile-time parameters.
-        PortMap             -- ^ I\/O port configuration.
+        [NetDeclaration]        -- ^ Created result nets.
+        [Attr']                 -- ^ Instance attributes.
+        !Identifier             -- ^ Component name.
+        !Identifier             -- ^ Instance name.
+        [()]                    -- ^ Compile-time parameters.
+        PortMap                 -- ^ I\/O port configuration.
     | BlackBoxDecl
-        !AcnBlackBox        -- ^ Primitive to defer.
-        BlackBoxContext     -- ^ Calling context.
+        !AcnBlackBox            -- ^ Primitive to defer.
+        BlackBoxContext         -- ^ Instantiation context.
     | TickDecl
         !CommentOrDirective
-        AcnDeclaration      -- ^ Declaration to be annotated.
+        AcnDeclaration          -- ^ Declaration to be annotated.
     | ConditionalDecl
-        !Text               -- ^ Condition text.
-        [AcnDeclaration]    -- ^ Body to add on condition.
+        !Text                   -- ^ Condition text.
+        [AcnDeclaration]        -- ^ Body to add on condition.
     deriving Show
 
 instance NFData AcnDeclaration where
@@ -645,7 +645,7 @@ data AcnExpression
         [AcnExpression]             -- ^ Constructor arguments.
     | SuperDataCon
         !CartesianType              -- ^ Type to be constructed.
-        !AcnExpression              -- ^ Expression determining constructor.
+        !AcnExpression              -- ^ Constructor encoding.
         [Maybe AcnExpression]       -- ^ All fields for this type.
     | Projection
         !AcnExpression              -- ^ Source expression.
@@ -659,7 +659,7 @@ data AcnExpression
     | BlackBoxE
         !AcnBlackBox                -- ^ Primitive to defer.
         BlackBoxContext             -- ^ Calling context.
-        !Bool                       -- ^ Maybe enclose in parentheses.
+        !Bool                       -- ^ Should enclose in parentheses?
     deriving Show
 
 instance NFData AcnExpression where
