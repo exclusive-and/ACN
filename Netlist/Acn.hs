@@ -56,6 +56,7 @@ module Netlist.Acn
     , Attr' (..)
     , netTypeSize
     , Size
+      -- *** Cartesian Types
     , CartesianType (..)
     , NetConstr (..)
     , cartesianSize
@@ -67,9 +68,9 @@ module Netlist.Acn
     , ResetPolarity (..)
     , InitBehaviour (..)
       -- * Representable Expressions
-    , Expr (..)
+    , AcnExpression (..)
     , Literal (..)
-    , Bit (..)
+    , VerilogBit (..)
     )
   where
 
@@ -121,29 +122,29 @@ data AcnComponent
 --
 data AcnDeclaration
     = Assignment
-        !NetDeclaration             -- ^ Result net.
-        !Expr                       -- ^ Expression to assign.
+        !NetDeclaration                     -- ^ Result net.
+        !AcnExpression                      -- ^ Expression to assign.
     | CondAssignment
-        !NetDeclaration             -- ^ Result net.
-        !Expr                       -- ^ Scrutinee.
-        !NetType                    -- ^ Scrutinee type.
-        [(Maybe Literal, Expr)]     -- ^ Alternatives.
+        !NetDeclaration                     -- ^ Result net.
+        !AcnExpression                      -- ^ Scrutinee.
+        !NetType                            -- ^ Scrutinee type.
+        [(Maybe Literal, AcnExpression)]    -- ^ Alternatives.
     | InstDecl
-        [NetDeclaration]            -- ^ Result nets.
-        [Attr']                     -- ^ Instance attributes.
-        !Identifier                 -- ^ Component name.
-        !Identifier                 -- ^ Instance name.
-        [()]                        -- ^ Compile-time parameters.
-        PortMap                     -- ^ I\/O port configuration.
+        [NetDeclaration]                    -- ^ Result nets.
+        [Attr']                             -- ^ Instance attributes.
+        !Identifier                         -- ^ Component name.
+        !Identifier                         -- ^ Instance name.
+        [()]                                -- ^ Compile-time parameters.
+        PortMap                             -- ^ I\/O port configuration.
     | BlackBoxDecl
-        !AcnBlackBox                -- ^ Primitive to defer.
-        BlackBoxContext             -- ^ Calling context.
+        !AcnBlackBox                        -- ^ Primitive to defer.
+        BlackBoxContext                     -- ^ Calling context.
     | TickDecl
         !CommentOrDirective
-        AcnDeclaration              -- ^ Declaration to be annotated.
+        AcnDeclaration                      -- ^ Declaration to be annotated.
     | ConditionalDecl
-        !Text                       -- ^ Condition text.
-        [AcnDeclaration]            -- ^ Body to add on condition.
+        !Text                               -- ^ Condition text.
+        [AcnDeclaration]                    -- ^ Body to add on condition.
     deriving Show
 
 instance NFData AcnDeclaration where
@@ -247,10 +248,10 @@ data CommentOrDirective
 --
 data NetDeclaration
     = NetDeclaration
-        { netComment    :: !(Maybe Text)    -- ^ Comment describing the net.
-        , netName       :: !Identifier      -- ^ Name of the net.
-        , netType       :: !NetType         -- ^ Net's representable type.
-        , initVal       :: Maybe Expr       -- ^ Optional initial value.
+        { netComment    :: !(Maybe Text)        -- ^ Optional comment.
+        , netName       :: !Identifier          -- ^ Name of the net.
+        , netType       :: !NetType             -- ^ Net's representable type.
+        , initVal       :: Maybe AcnExpression  -- ^ Optional initial value.
         }
     deriving (Show, Generic, NFData)
 
@@ -282,11 +283,11 @@ data IdentifierType
 --
 data PortMap
     = IndexedPortMap
-        [ (PortDirection, NetType, Expr) ]
+        [ (PortDirection, NetType, AcnExpression) ]
     -- ^ Association in-order: the @n@-th port mapping corresponds with the
     -- @n@-th input of the component.
     | NamedPortMap
-        [ (Identifier, PortDirection, NetType, Expr) ]
+        [ (Identifier, PortDirection, NetType, AcnExpression) ]
     -- ^ Association by name: port mapping @(id, _, ty, _)@ corresponds to
     -- net @NetDeclaration _ id ty _@ in the component.
     deriving Show
@@ -389,7 +390,7 @@ data BlackBoxContext
 
 -- | Hardware black boxes may accept expressions or type-level arguments.
 --
-type BlackBoxArg = Either (Expr, NetType) NetTyCon
+type BlackBoxArg = Either (AcnExpression, NetType) NetTyCon
 
 
 -- |
@@ -628,7 +629,7 @@ data InitBehaviour
     
 -- | Well-typed representable expressions.
 --
-data Expr
+data AcnExpression
     = Literal
         !(Maybe (NetType, Size))    -- ^ Literal size and type.
         !Literal                    -- ^ Literal contents.
@@ -636,18 +637,18 @@ data Expr
     | DataCon
         !NetType                    -- ^ Type to be constructed.
         !Int                        -- ^ Index of constructor to use.
-        [Expr]                      -- ^ Constructor arguments.
+        [AcnExpression]             -- ^ Constructor arguments.
     | SuperDataCon
         !CartesianType              -- ^ Type to be constructed.
-        !Expr                       -- ^ Expression determining constructor.
-        [Maybe Expr]                -- ^ All fields for this type.
+        !AcnExpression              -- ^ Expression determining constructor.
+        [Maybe AcnExpression]       -- ^ All fields for this type.
     | Projection
-        !Expr                       -- ^ Source expression.
+        !AcnExpression              -- ^ Source expression.
         !NetType                    -- ^ Type of source expression.
         !Int                        -- ^ Constructor to project from.
         !Int                        -- ^ Field to project.
     | Slice
-        !Expr                       -- ^ Source expression.
+        !AcnExpression              -- ^ Source expression.
         !Int                        -- ^ High bit index of range.
         !Int                        -- ^ Low bit index of range.
     | BlackBoxE
@@ -656,13 +657,13 @@ data Expr
         !Bool                       -- ^ Maybe enclose in parentheses.
     deriving Show
 
-instance NFData Expr where
+instance NFData AcnExpression where
     rnf x = x `seq` ()
 
 data Literal
     = NumLit    !Integer            -- ^ Number literal
     | BoolLit   !Bool               -- ^ Boolean literal
-    | BitLit    !Bit                -- ^ Bit literal
+    | BitLit    !VerilogBit         -- ^ Bit literal
     | BitVecLit !Integer !Integer   -- ^ BitVector literal
     | VecLit    [Literal]           -- ^ Vector literal
     | BlobLit   !String !String     -- ^ Blob literal
@@ -671,7 +672,7 @@ data Literal
 
 -- | IEEE 1364 four-valued logic literals.
 --
-data Bit
+data VerilogBit
     = H -- ^ High
     | L -- ^ Low
     | U -- ^ Undefined
