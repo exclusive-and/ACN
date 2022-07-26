@@ -37,6 +37,7 @@ module Netlist.Acn
       -- * ACN Declarations
       AcnComponent (..)
     , AcnDeclaration (..)
+    , Alternative
     , CommentOrDirective (..)
       -- ** Net Declarations
     , NetDeclaration (..)
@@ -122,29 +123,29 @@ data AcnComponent
 --
 data AcnDeclaration
     = Assignment
-        !NetDeclaration                     -- ^ Result net.
-        !AcnExpression                      -- ^ Expression to assign.
+        !NetDeclaration     -- ^ Created result net.
+        !AcnExpression      -- ^ Expression to assign.
     | CondAssignment
-        !NetDeclaration                     -- ^ Result net.
-        !AcnExpression                      -- ^ Scrutinee.
-        !NetType                            -- ^ Scrutinee type.
-        [(Maybe Literal, AcnExpression)]    -- ^ Alternatives.
+        !NetDeclaration     -- ^ Created result net.
+        !AcnExpression      -- ^ Scrutinee.
+        !NetType            -- ^ Scrutinee type.
+        [Alternative]       -- ^ Alternatives.
     | InstDecl
-        [NetDeclaration]                    -- ^ Result nets.
-        [Attr']                             -- ^ Instance attributes.
-        !Identifier                         -- ^ Component name.
-        !Identifier                         -- ^ Instance name.
-        [()]                                -- ^ Compile-time parameters.
-        PortMap                             -- ^ I\/O port configuration.
+        [NetDeclaration]    -- ^ Created result nets.
+        [Attr']             -- ^ Instance attributes.
+        !Identifier         -- ^ Component name.
+        !Identifier         -- ^ Instance name.
+        [()]                -- ^ Compile-time parameters.
+        PortMap             -- ^ I\/O port configuration.
     | BlackBoxDecl
-        !AcnBlackBox                        -- ^ Primitive to defer.
-        BlackBoxContext                     -- ^ Calling context.
+        !AcnBlackBox        -- ^ Primitive to defer.
+        BlackBoxContext     -- ^ Calling context.
     | TickDecl
         !CommentOrDirective
-        AcnDeclaration                      -- ^ Declaration to be annotated.
+        AcnDeclaration      -- ^ Declaration to be annotated.
     | ConditionalDecl
-        !Text                               -- ^ Condition text.
-        [AcnDeclaration]                    -- ^ Body to add on condition.
+        !Text               -- ^ Condition text.
+        [AcnDeclaration]    -- ^ Body to add on condition.
     deriving Show
 
 instance NFData AcnDeclaration where
@@ -236,10 +237,14 @@ instance NFData AcnDeclaration where
 -- endmodule
 -- @
     
+type Alternative = (Maybe Literal, AcnExpression)
+
+    
 data CommentOrDirective
     = Comment   Text
     | Directive Text
     deriving Show
+    
 
 -- |
 -- An ACN net declaration contains the name and type information of a net.
