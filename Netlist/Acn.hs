@@ -9,9 +9,10 @@
 -- |
 -- Module       : Acn
 -- Description  : ACN Hardware Description Language
+-- Copyright    : (c) Simon Lovell Bart, 2022
+-- License      : BSD2
 -- Maintainer   : xandgate@gmail.com
 -- Stability    : experimental
--- Language     : Haskell2010
 -- 
 -- = Assignment-Creates-Net (ACN) Hardware Description Language
 --
@@ -109,17 +110,18 @@ data AcnComponent
     deriving (Show, Generic, NFData)
 
 -- |
--- ACN declarations have two basic responsibilities:
+-- ACN declarations unify two of the central concerns of digital logic
+-- representation with graphs. In particular, they are responsible for:
 --
---  (1) describe the structure of some hardware process; and
---  (2) create all the nets assigned to by that process.
+--  (1) describing the structure of some hardware process, and
+--  (2) creating all the nets assigned to by that process.
 --
 -- Satisfying responsibility (2) has some interesting ramifications for
 -- the representation of logic designs. As we've seen, this allows ACN to
 -- know a lot about the use of nets. We can easily determine target HDL
 -- annotations for net codegen. We may even be able to make more nuanced
 -- decisions about the annotations: assessing the advantages of many
--- different implementations on a problem-specific basis.
+-- different implementations to solve for problem-specific considerations.
 --
 data AcnDeclaration
     = Assignment
