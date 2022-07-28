@@ -80,10 +80,11 @@ import Debug.Trace
 --
 acnToVerilogComponent :: AcnComponent -> VerilogM Doc
 acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
-    inPorts         <- mapM nvInput inputs
-    outPorts        <- mapM nvOutput outputs
+    inPorts  <- mapM nvInput inputs
+    outPorts <- mapM nvOutput outputs
     
-    let portsText = tupleInputs inPorts <> tupleOutputs outPorts <> semi
+    let portsText = tupleInputs inPorts
+                 <> tupleOutputs outPorts <> semi
         moduleHeader = "module" <+> pretty name <> line
                     <> indent 4 portsText <> line
     
@@ -116,7 +117,7 @@ acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
     tupleOutputs = \case
         []     -> string "  // No outputs." <> line <> rparen
         (x:xs) -> string "  // Outputs." <> line
-               <> (if length inputs > 0
+               <> (if not $ null inputs
                       then comma <> space
                       else string "  ")
                <> x <> line
@@ -363,14 +364,22 @@ netToVerilogExpr shouldParen = \case
 nvLiteral :: Maybe (NetType, Size) -> Literal -> VerilogM Doc
 nvLiteral tyM = \case
     NumLit i
-        | Nothing <- tyM
-        -> return $ integer i
+        | Nothing <- tyM -> return $ integer i
+        | Just (ty@(Index _), _) <- tyM
+        -> return $ int (netTypeSize ty) <> "'d" <> integer i
+        | Just (Unsigned _, sz) <- tyM
+        -> return $ int sz <> "'d" <> integer i
+        | Just (Signed _, sz) <- tyM , i < 0
+        -> return $ "-" <> int sz <> "'sd" <> integer (abs i)
+        | Just (Signed _, sz) <- tyM
+        -> return $ int sz <> "'sd" <> integer i
     BoolLit b
         -> return $ string $ if b then "1'b1" else "1'b0"
     BitLit b
         -> return $ string "1'b" <> pretty (bitChar b)
     StringLit s
         -> return $ string . pack $ show s
+    lit -> error $ "nvLiteral: " <> show lit
 
 -- |
 -- Generate a data constructor for a type. Be aware that:
