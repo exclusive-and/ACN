@@ -7,8 +7,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
--- Module       : Acn
--- Description  : ACN Hardware Description Language
+-- Module       : Netlist.Acn
+-- Description  : Assignment-Creates-Net Hardware Description Language
 -- Copyright    : (c) Simon Lovell Bart, 2022
 -- License      : BSD2
 -- Maintainer   : xandgate@gmail.com
@@ -38,7 +38,7 @@ module Netlist.Acn
       -- * ACN Declarations
       AcnComponent (..)
     , AcnDeclaration (..)
-    , Alternative
+    , AcnAlternative
     , CommentOrDirective (..)
       -- ** Net Declarations
     , NetDeclaration (..)
@@ -131,7 +131,7 @@ data AcnDeclaration
         !NetDeclaration         -- ^ Created result net.
         !AcnExpression          -- ^ Expression to scrutinize.
         !NetType                -- ^ Scrutinee type.
-        [Alternative]           -- ^ Alternatives to choose from.
+        [AcnAlternative]        -- ^ Alternatives to choose from.
     | InstDecl
         [NetDeclaration]        -- ^ Created result nets.
         [Attr']                 -- ^ Instance attributes.
@@ -238,8 +238,9 @@ instance NFData AcnDeclaration where
 --
 -- endmodule
 -- @
-    
-type Alternative = (Maybe Literal, AcnExpression)
+
+
+type AcnAlternative = (Maybe Literal, AcnExpression)
 
     
 data CommentOrDirective

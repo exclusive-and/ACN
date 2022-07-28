@@ -269,10 +269,10 @@ nvCondAssign
     :: NetDeclaration   -- ^ Result net to assign.
     -> AcnExpression    -- ^ Expression to scrutinize.
     -> NetType          -- ^ Type of scrutinee.
-    -> [(Maybe Literal, AcnExpression)]    -- ^ Conditional alternatives.
+    -> [AcnAlternative] -- ^ Conditional alternatives.
     -> VerilogM Doc
 nvCondAssign dest scrut scrutTy alts = do
-    let goCond :: (Maybe Literal, AcnExpression) -> VerilogM Doc
+    let goCond :: AcnAlternative -> VerilogM Doc
         goCond (Just c, e) = do
             cText <- nvLiteral Nothing c -- TODO: proper condition literal reprs
             eText <- netToVerilogExpr False e
