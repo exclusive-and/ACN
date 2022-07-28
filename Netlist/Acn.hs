@@ -76,6 +76,8 @@ module Netlist.Acn
     )
   where
 
+import              Netlist.AcnBlackBoxes
+  
 import              Control.DeepSeq
 import              Data.Bool
 import              Data.Eq
@@ -686,24 +688,4 @@ data VerilogBit
     | U -- ^ Undefined
     | Z -- ^ High-impedance
     deriving (Eq, Show, Typeable, Lift)
-
-
-
-
-
-
--- NEED TO IMPLEMENT
-
-
-type BlackBoxTemplate = [Element]
-
-data Element = Element
-    deriving Show
-
-data BlackBox = BlackBox
-    deriving Show
-
-data HDL = Verilog | VHDL
-    deriving (Show, Generic, NFData)
-
 
