@@ -82,16 +82,21 @@ acnToVerilogComponent :: AcnComponent -> VerilogM Doc
 acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
     inPorts         <- mapM nvInput inputs
     outPorts        <- mapM nvOutput outputs
+    
+    let portsText = tupleInputs inPorts <> tupleOutputs outPorts <> semi
+        moduleHeader = "module" <+> pretty name <> line
+                    <> indent 4 portsText <> line
+    
     logicNetsText   <- acnToVerilogNetDecls True logic
     logicDeclsText  <- acnToVerilogDecls logic
     outDeclsText    <- acnToVerilogDecls outputs
     
-    return $ "module" <+> pretty name <> line
-          <> indent 4 (tupleInputs inPorts <> line
-                    <> tupleOutputs outPorts <> semi) <> line
-          <> indent 2 (logicNetsText <> line <> line
-                    <> logicDeclsText <> line <> line
-                    <> outDeclsText) <> line
+    let moduleBody = logicNetsText <> line <> line
+                  <> logicDeclsText <> line
+                  <> outDeclsText
+    
+    return $ moduleHeader <> line
+          <> indent 2 moduleBody <> line
           <> "endmodule"
   where
     nvInput :: NetDeclaration -> VerilogM Doc
