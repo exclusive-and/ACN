@@ -8,7 +8,7 @@
 
 -- |
 -- Module       : Netlist.Acn
--- Description  : Assignment-Creates-Net Hardware Description Language
+-- Description  : ACN Hardware Description Language Abstract Syntax
 -- Copyright    : (c) Simon Lovell Bart, 2022
 -- License      : BSD2
 -- Maintainer   : xandgate@gmail.com
@@ -17,19 +17,19 @@
 -- = Assignment-Creates-Net (ACN) Hardware Description Language
 --
 -- ACN is a single static assignment language for algorithmically
--- representing CMOS-style digital logic. Its main application is as an
--- intermediate stage in Haskell-to-HDL compilers: it converts readily
--- to both graph form for Haskell interoperability, and to Verilog/VHDL
--- for FPGA programming.
+-- representing CMOS-style digital logic. Its main application is
+-- as an intermediate stage in Haskell-to-HDL compilers: it converts
+-- readily to both graph form for Haskell interoperability, and to
+-- Verilog/VHDL for FPGA programming.
 --
--- The core idea of the language is that each net should have exactly
--- one driver. This idea corresponds well with Haskell, where names are
--- immutably bound to expressions. And conveniently for us, it also
--- corresponds to the notion in CMOS logic that a wire should only be
--- powered and grounded through exactly one CMOS cell. Driving a wire
--- by more than one CMOS cell should be considered an error, as it will
--- result in short circuits if one cell grounds the wire while another
--- cell powers it.
+-- The core idea of the language is that each net should have
+-- exactly one driver. This idea corresponds well with Haskell,
+-- where names are immutably bound to expressions. And conveniently
+-- for us, it also corresponds to the notion in CMOS logic that a
+-- wire should only be powered and grounded through exactly one CMOS
+-- cell. Driving a wire by more than one CMOS cell should be
+-- considered an error, as it will result in short circuits if one
+-- cell grounds the wire while another cell powers it.
 -- 
 module Netlist.Acn
     ( -- $acnExamples
@@ -112,18 +112,18 @@ data AcnComponent
     deriving (Show, Generic, NFData)
 
 -- |
--- ACN declarations unify two of the central concerns of digital logic
--- representation with graphs. In particular, they are responsible for:
+-- ACN declarations unify the central concerns of our CMOS logic
+-- representation with an eye toward Haskell. In particular, they must:
 --
---  (1) describing the structure of some hardware process, and
---  (2) creating all the nets assigned to by that process.
+--  (1) describe the structure of some hardware process, and
+--  (2) create all the nets assigned to by that process.
 --
 -- Satisfying responsibility (2) has some interesting ramifications for
--- the representation of logic designs. As we've seen, this allows ACN to
--- know a lot about the use of nets. We can easily determine target HDL
--- annotations for net codegen. We may even be able to make more nuanced
--- decisions about the annotations: assessing the advantages of many
--- different implementations to solve for problem-specific considerations.
+-- the representation of logic designs. This allows ACN to know a lot
+-- about the use of nets. We can easily determine target HDL annotations
+-- for net codegen. We may even be able to make more nuanced decisions
+-- about the annotations: assessing the advantages of many different
+-- target implementations to account for problem-specific considerations.
 --
 data AcnDeclaration
     = Assignment
@@ -265,7 +265,8 @@ data NetDeclaration
         }
     deriving (Show, Generic, NFData)
 
--- | Net names and references.
+-- |
+-- Net names and references.
 --
 data Identifier
     = RawIdentifier
@@ -289,7 +290,8 @@ data IdentifierType
     deriving (Show, Generic, NFData, Eq)
 
 
--- | Map expressions to input or output nets of an ACN component.
+-- |
+-- Map expressions to input or output nets of an ACN component.
 --
 data PortMap
     = IndexedPortMap
@@ -307,10 +309,7 @@ data PortDirection = In | Out
     
 
 -- |
--- Some circuit parts are deeply HDL-dependent and aren't easily
--- represented by ACN itself. To work around this, ACN has circuit
--- primitives in the target language which that language's codegen
--- can substitute in the appropriate context.
+-- The contents of a primitive black box in an ACN declaration.
 --
 data AcnBlackBox
     = PrimBlackBox
@@ -398,7 +397,8 @@ data BlackBoxContext
         }
     deriving Show
 
--- | Hardware black boxes may accept expressions or type-level arguments.
+-- |
+-- Hardware black boxes may accept expressions or type-level arguments.
 --
 type BlackBoxArg = Either (AcnExpression, NetType) NetTyCon
 
@@ -430,7 +430,8 @@ data NetTyCon
     | String        !String
     deriving (Show, Generic, NFData)
     
--- | Types with known representations in hardware.
+-- |
+-- Types with known representations in hardware.
 --
 data NetType
     = Annotated [Attr'] !NetType
@@ -506,61 +507,58 @@ netTypeSize = \case
 type Size = Int
     
 -- |
--- Programmer-defined algebraic data types.
---
--- N.B. that the 'mkADT' function should prevent any tycons other than
--- 'HWTyCon' from becoming fields of a cartesian type.
---
--- Unlike base Clash, we don't tie fields to constructors. We prefer
--- to optimistically flatten SP types to generate fewer multiplexers.
---
--- Given the source
+-- Programmer-defined algebraic data types. Sum-of-product types get
+-- flattened to product types with a switch:
 --
 -- @
+-- -- ORIGINAL TYPE
+-- --
 -- data Example = Example1 { w1 :: Bit }
 --              | Example2 { w2 :: Bit }
 --  
 -- example :: Bool -> Example
 -- example p = if p then Example2 b else Example1 a
+--
+--
+-- -- FLATTENED EQUIVALENT
+-- --
+-- data Example' =
+--     Example' { switch :: ExampleSwitch
+--              , w1     :: Bit
+--              , w2     :: Bit
+--              }
+--
+-- data ExampleSwitch = Example1' | Example2'
+--
+-- example' :: Bool -> Example'
+-- example' p = if p then Example' Example2' a b
+--                   else Example' Example1' a b
 -- @
 --
--- the base Clash netlist generator produces the HDL result
+-- The flattening is to ensure that we generate extra wires rather than
+-- multiplexing logic. The preference for more wires is advantageous
+-- over multiplexers because wires are no-cost in HDL synthesis. The
+-- above definition of @example\'@ generates the Verilog:
 --
 -- @
--- wire [1:0] exampleWire;
---  
--- assign exampleWire[1] = p;
--- assign exampleWire[0] = p ? b : a;
+-- wire [2:0] example;
+--
+-- assign example = {p, a, b};
 -- @
 --
--- From the same source, the new netlist generator will deduce the
--- intermediate result
+-- For contrast, the original implementation of @example@ generates the
+-- multiplexing logic:
 --
 -- @
--- data Example =
--- Example { switch :: ExampleSwitch
---         , w1     :: Bit
---         , w2     :: Bit
---         }
---  
--- data ExampleSwitch = Example1 | Example2
---  
--- example :: Bool -> Example
--- example p = if p then Example Example2 a b
---                  else Example Example1 a b
--- @
+-- reg [1:0] example;
 --
--- The new intermediate result's HDL output is
---
+-- always @(*) begin
+--   case (p)
+--     1'b0: example = {1'b0, a};
+--     1'b1: example = {1'b1, b};
+--   endcase
+-- end
 -- @
--- wire [2:0] exampleWire;
---  
--- assign exampleWire[2] = p;
--- assign exampleWire[1:0] = {a, b};
--- @
---
--- Optimistic flattening is advantageous over multiplexers because
--- wires are no-cost in HDL synthesis.
 --
 data CartesianType
     = CartesianType
@@ -632,12 +630,9 @@ data InitBehaviour
     | Defined
     deriving (Show, Generic, NFData)
 
-
--- * Netlist Expressions
---
--- $acnExpressions
     
--- | Well-typed representable expressions.
+-- |
+-- Well-typed representable expressions.
 --
 data AcnExpression
     = Literal
@@ -680,7 +675,8 @@ data Literal
     | StringLit !String             -- ^ String literal
     deriving (Eq, Show)
 
--- | IEEE 1364 four-valued logic literals.
+-- |
+-- IEEE 1364 four-valued logic literals.
 --
 data VerilogBit
     = H -- ^ High

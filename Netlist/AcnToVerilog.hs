@@ -67,7 +67,8 @@ import qualified    Prettyprinter as PP
 import Debug.Trace
 
 
--- | Converts an ACN component directly into a Verilog module.
+-- |
+-- Converts an ACN component directly into a Verilog module.
 --
 -- Conversion happens in six steps:
 --
@@ -126,8 +127,8 @@ acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
                       else vcat (map commafy xs) <> line)
                <> rparen
 
--- | Extract a Verilog net declaration from an ACN logic declaration.
---
+-- |
+-- Extract a Verilog net declaration from an ACN logic declaration.
 -- Conversion rules are as follows:
 --
 --  * @'Assignment'@: to @wire@.
@@ -174,8 +175,8 @@ acnToVerilogNetDecls addSemi =
 -- information. We let the declaration processor prepend whichever use
 -- annotation it thinks is appropriate.
 --
--- >>> nvNetDecl True
--- >>>   $ 'NetDeclaration' (Just comment) name ty (Just initVal)
+-- >>> let net = 'NetDeclaration' (Just comment) name ty (Just initVal)
+-- >>> nvNetDecl True net
 -- [netTypeSize ty:0] name = initVal; // comment
 --
 nvNetDecl
@@ -219,15 +220,9 @@ netToVerilogType netTy = case netTy of
     _ -> return $ brackets (int (netTypeSize netTy - 1) <> colon <> int 0)
 
 
-type Doc = PP.Doc ()
-
-data VerilogState
-    = VerilogState
-        { _allowTernary :: Bool }
-
-type VerilogM = State VerilogState
-
-
+-- |
+-- Convert an ACN declaration to a Verilog declaration.
+--
 acnToVerilogDecl :: AcnDeclaration -> VerilogM Doc
 acnToVerilogDecl = \case
     TickDecl ann decl -> do
@@ -344,7 +339,8 @@ nvBlackBoxDecl :: AcnBlackBox -> BlackBoxContext -> VerilogM Doc
 nvBlackBoxDecl blackbox context = undefined
 
 
--- | Translate an expression in netlist language to Verilog.
+-- |
+-- Translate an expression in netlist language to Verilog.
 --
 netToVerilogExpr :: Bool -> AcnExpression -> VerilogM Doc
 netToVerilogExpr shouldParen = \case
@@ -461,6 +457,15 @@ nvProject ty src consIndex fieldIndex = undefined
 nvSlice :: AcnExpression -> Int -> Int -> VerilogM Doc
 nvSlice src rangeHi rangeLo = undefined
                 
+
+
+type Doc = PP.Doc ()
+
+data VerilogState
+    = VerilogState
+        { _allowTernary :: Bool }
+
+type VerilogM = State VerilogState
 
 
                 
