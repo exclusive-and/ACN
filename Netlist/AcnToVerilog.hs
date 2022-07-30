@@ -70,15 +70,6 @@ import Debug.Trace
 -- |
 -- Converts an ACN component directly into a Verilog module.
 --
--- Conversion happens in six steps:
---
---  (1) Module head.
---  (2) Inputs.
---  (3) Output nets.
---  (4) Logic nets.
---  (5) Logic assignments.
---  (6) Output assignments.
---
 acnToVerilogComponent :: AcnComponent -> VerilogM Doc
 acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
     inPorts  <- mapM nvInput inputs
@@ -422,13 +413,17 @@ nvDcApp ty consIndex args = case ty of
 -- Construct a Cartesian datatype. See 'nvDcApp' for more information.
 --
 nvCartesianDc :: CartesianType -> Int -> [AcnExpression] -> VerilogM Doc
-nvCartesianDc (CartesianType tyName constrs fields) consIndex args = do
+nvCartesianDc cty@(CartesianType tyName constrs fields) consIndex args = do
     let constr = constrs !! consIndex
         enumFields = zip [0..] fields
         indexArgs = zip (fieldIndices constr) args
     argsText <- go enumFields indexArgs
-    -- TODO: actually prepend constructor.
-    return $ enclose lbrace rbrace . hsep $ punctuate comma argsText
+    
+    let consSize = constructorSize cty
+        consText = int consSize <> "'d" <> int consIndex
+        dcText = if consSize == 0 then argsText else consText:argsText
+    
+    return $ braces . hsep $ punctuate comma dcText
   where
     go :: [(Int, NetType)] -> [(Int, AcnExpression)] -> VerilogM [Doc]
     go ((n, field):fs) vs

@@ -29,10 +29,13 @@ main = do
         logicA1 = InstDecl [logicNet1] [] subComponentId instanceName [] pm
         
 
-        constr = NetConstr (RawIdentifier "cons" Nothing callStack) [1]
+        constr1 = NetConstr (RawIdentifier "cons1" Nothing callStack) [1]
+        constr2 = NetConstr (RawIdentifier "cons2" Nothing callStack) [0]
         fields = [Signed 10, Signed 14]
-        ty     = CartesianType (RawIdentifier "MyType" Nothing callStack) [constr] fields
-        logicA2 = Assignment logicNet2 (DataCon (Cartesian ty) 0 [Literal Nothing $ NumLit 5])
+        ty     = CartesianType (RawIdentifier "MyType" Nothing callStack) [constr1, constr2] fields
+        logicA2 = Assignment logicNet2
+                    $ DataCon (Cartesian ty) 1
+                        [ Literal (Just (Signed 10, 10)) $ NumLit 5 ]
 
         resId  = RawIdentifier "res" Nothing callStack
         resNet = NetDeclaration (Just "result") resId (BitVector 24) Nothing

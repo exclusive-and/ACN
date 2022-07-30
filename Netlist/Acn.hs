@@ -58,10 +58,11 @@ module Netlist.Acn
     , Attr' (..)
     , netTypeSize
     , Size
-      -- *** Cartesian Types
+      -- ** Cartesian Types
     , CartesianType (..)
     , NetConstr (..)
     , cartesianSize
+    , constructorSize
       -- ** Clock Domains
     , Domain (..)
     , DomainName
@@ -581,11 +582,15 @@ data NetConstr
 -- with the number of bits needed for all fields.
 --
 cartesianSize :: CartesianType -> Size
-cartesianSize cty = constrSize + fieldsSize where
-    constrSize = fromMaybe 0 . clogBase 2 $ numConstrs
-    numConstrs = toInteger . length $ constructors cty
-
+cartesianSize cty = constructorSize cty + fieldsSize where
     fieldsSize = sum . map netTypeSize $ fields cty
+
+-- |
+-- Compute the size of the constructor for a Cartesian type.
+--
+constructorSize :: CartesianType -> Size
+constructorSize =
+    fromMaybe 0 . clogBase 2 . toInteger . length . constructors
 
 
 data Domain
