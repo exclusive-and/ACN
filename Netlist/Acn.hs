@@ -41,7 +41,7 @@ module Netlist.Acn
     , AcnAlternative
     , CommentOrDirective (..)
       -- ** Net Declarations
-    , NetDeclaration (..)
+    , NetDeclarator (..)
     , Identifier (..)
     , IdentifierType (..)
       -- ** Port Maps
@@ -106,7 +106,7 @@ import              CeilingLog
 data AcnComponent
     = AcnComponent
         { componentName :: !Identifier      -- ^ Name of the component.
-        , inputs        :: [NetDeclaration] -- ^ Input ports.
+        , inputs        :: [NetDeclarator]  -- ^ Input ports.
         , logic         :: [AcnDeclaration] -- ^ Internal logic.
         , outputs       :: [AcnDeclaration] -- ^ Output ports\/logic.
         }
@@ -128,15 +128,15 @@ data AcnComponent
 --
 data AcnDeclaration
     = Assignment
-        !NetDeclaration         -- ^ Created result net.
+        !NetDeclarator          -- ^ Created result net.
         !AcnExpression          -- ^ Expression to assign.
     | CondAssignment
-        !NetDeclaration         -- ^ Created result net.
+        !NetDeclarator          -- ^ Created result net.
         !AcnExpression          -- ^ Expression to scrutinize.
         !NetType                -- ^ Scrutinee type.
         [AcnAlternative]        -- ^ Alternatives to choose from.
     | InstDecl
-        [NetDeclaration]        -- ^ Created result nets.
+        [NetDeclarator]         -- ^ Created result nets.
         [Attr']                 -- ^ Instance attributes.
         !Identifier             -- ^ Component name.
         !Identifier             -- ^ Instance name.
@@ -146,7 +146,7 @@ data AcnDeclaration
         !AcnBlackBox            -- ^ Primitive to defer.
         BlackBoxContext         -- ^ Instantiation context.
     | TickDecl
-        !CommentOrDirective
+        !CommentOrDirective     -- ^ Annotation.
         AcnDeclaration          -- ^ Declaration to be annotated.
     | ConditionalDecl
         !Text                   -- ^ Condition text.
@@ -253,12 +253,12 @@ data CommentOrDirective
     
 
 -- |
--- An ACN net declaration contains the name and type information of a net.
+-- An ACN net declarator contains the name and type information of a net.
 -- Usage annotations should be decided by examining the declarations that
 -- create the nets.
 --
-data NetDeclaration
-    = NetDeclaration
+data NetDeclarator
+    = NetDeclarator
         { netComment    :: !(Maybe Text)        -- ^ Optional comment.
         , netName       :: !Identifier          -- ^ Name of the net.
         , netType       :: !NetType             -- ^ Net's representable type.
@@ -391,7 +391,7 @@ data AcnBlackBox
 --
 data BlackBoxContext
     = BlackBoxContext
-        { boxTargets    :: [NetDeclaration]
+        { boxTargets    :: [NetDeclarator]
         -- ^ Result declarations.
         , boxInputs     :: [BlackBoxArg]
         -- ^ Black box arguments.

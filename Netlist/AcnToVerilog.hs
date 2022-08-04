@@ -5,8 +5,11 @@
 {-# LANGUAGE RecordWildCards #-}
 
 module Netlist.AcnToVerilog
-    ( -- * ACN Component Translation
-      acnToVerilogComponent
+    ( -- * Backend Monad
+      VerilogState (..)
+    , VerilogM
+      -- * ACN Component Translation
+    , acnToVerilogComponent
       -- ** ACN Net Declaration Pass
     , acnToVerilogNetDecl
     , acnToVerilogNetDecls
@@ -31,9 +34,6 @@ module Netlist.AcnToVerilog
       -- ** Accessors
     , nvProject
     , nvSlice
-      -- * Backend Monad
-    , VerilogState (..)
-    , VerilogM
     )
   where
 
@@ -67,6 +67,15 @@ import qualified    Prettyprinter as PP
 import Debug.Trace
 
 
+type Doc = PP.Doc ()
+
+data VerilogState
+    = VerilogState
+        { _allowTernary :: Bool }
+
+type VerilogM = State VerilogState
+
+
 -- |
 -- Converts an ACN component directly into a Verilog module.
 --
@@ -92,7 +101,7 @@ acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
           <> indent 2 moduleBody <> line
           <> "endmodule"
   where
-    nvInput :: NetDeclaration -> VerilogM Doc
+    nvInput :: NetDeclarator -> VerilogM Doc
     nvInput = fmap ("input" <+>) . nvNetDecl False
     
     nvOutput :: AcnDeclaration -> VerilogM Doc
@@ -166,15 +175,15 @@ acnToVerilogNetDecls addSemi =
 -- information. We let the declaration processor prepend whichever use
 -- annotation it thinks is appropriate.
 --
--- >>> let net = 'NetDeclaration' (Just comment) name ty (Just initVal)
+-- >>> let net = 'NetDeclarator' (Just comment) name ty (Just initVal)
 -- >>> nvNetDecl True net
 -- [netTypeSize ty:0] name = initVal; // comment
 --
 nvNetDecl
     :: Bool             -- ^ Add a semicolon to the end of the declaration?
-    -> NetDeclaration   -- ^ Net to declare.
+    -> NetDeclarator    -- ^ Net to declare.
     -> VerilogM Doc
-nvNetDecl addSemi (NetDeclaration commentM name ty initValM) = do
+nvNetDecl addSemi (NetDeclarator commentM name ty initValM) = do
     let commentText = maybe "" (comment "//") commentM
     tyText <- netToVerilogType ty
     
@@ -258,7 +267,7 @@ acnToVerilogDecls = fmap vcat . mapM (fmap (<> line) . acnToVerilogDecl)
 -- @
 --
 nvCondAssign
-    :: NetDeclaration   -- ^ Result net to assign.
+    :: NetDeclarator    -- ^ Result net to assign.
     -> AcnExpression    -- ^ Expression to scrutinize.
     -> NetType          -- ^ Type of scrutinee.
     -> [AcnAlternative] -- ^ Conditional alternatives.
@@ -409,10 +418,33 @@ nvDcApp ty consIndex args = case ty of
               ++ " expected one argument, got "
               ++ show args
 
+vecChain :: NetType -> [AcnExpression] -> Maybe [AcnExpression]
+vecChain ty args = case ty of
+    Vector 0 _ -> Just []
+    Vector 1 _
+        | [e] <- args -> Just [e]
+    Vector n _
+        | [e1, DataCon ty _ e2] <- args
+        -> liftA2 (:) (Just e1) (vecChain ty e2)
+    _ -> Nothing
+
+rtreeChain :: NetType -> [AcnExpression] -> Maybe [AcnExpression]
+rtreeChain ty args = case ty of
+    RTree 0 _
+        | [e] <- args -> Just [e]
+    RTree n _
+        | [e1, DataCon ty _ e2] <- args 
+        -> liftA2 (:) (Just e1) (rtreeChain ty e2)
+    _ -> Nothing
+
 -- |
 -- Construct a Cartesian datatype. See 'nvDcApp' for more information.
 --
-nvCartesianDc :: CartesianType -> Int -> [AcnExpression] -> VerilogM Doc
+nvCartesianDc
+    :: CartesianType    -- ^ Cartesian type to construct.
+    -> Int              -- ^ Index of the constructor to use.
+    -> [AcnExpression]  -- ^ Arguments to the constructor.
+    -> VerilogM Doc
 nvCartesianDc cty@(CartesianType tyName constrs fields) consIndex args = do
     let constr = constrs !! consIndex
         enumFields = zip [0..] fields
@@ -440,28 +472,29 @@ nvCartesianDc cty@(CartesianType tyName constrs fields) consIndex args = do
 
 
 nvSuperDcApp
-    :: CartesianType
-    -> AcnExpression
-    -> [Maybe AcnExpression]
+    :: CartesianType            -- ^ Cartesian type to construct.
+    -> AcnExpression            -- ^ Constructor selector.
+    -> [Maybe AcnExpression]    -- ^ Arguments to all constructors.
     -> VerilogM Doc
 nvSuperDcApp ty consExpr argsM = undefined
 
-nvProject :: NetType -> AcnExpression -> Int -> Int -> VerilogM Doc
-nvProject ty src consIndex fieldIndex = undefined
+nvProject
+    :: NetType          -- ^ Type to project out of.
+    -> AcnExpression    -- ^ Source expression.
+    -> Int              -- ^ Constructor to get a field from.
+    -> Int              -- ^ Index of the field to get.
+    -> VerilogM Doc
+nvProject ty src consIndex consFieldIndex = do
+    {-let constr     = constructors ty !! consIndex
+        fieldIndex = fieldIndices constr !! consFieldIndex
+        start = 
+    srcText <- netToVerilogExpr True src
+    return $ srcText <> (braces ) -}
+    undefined
 
 nvSlice :: AcnExpression -> Int -> Int -> VerilogM Doc
 nvSlice src rangeHi rangeLo = undefined
                 
-
-
-type Doc = PP.Doc ()
-
-data VerilogState
-    = VerilogState
-        { _allowTernary :: Bool }
-
-type VerilogM = State VerilogState
-
 
                 
 comment prefix text = prefix <> " " <> pretty text
@@ -473,20 +506,11 @@ instance Pretty Identifier where
 tupleInputs = undefined
 tupleOutputs = undefined
     
-listBraces = align . enclose lbrace rbrace . hsep . punctuate (comma <+> softline)
+listBraces = align . braces . hsep . punctuate (comma <+> softline)
 
 commafy x = comma <> space <> x
 
-vecChain :: NetType -> [AcnExpression] -> Maybe [AcnExpression]
-vecChain (Vector 0 _) _ = Just []
-vecChain (Vector 1 _) [e] = Just [e]
-vecChain (Vector n _) [e1,DataCon ty _ e2] = liftA2 (:) (Just e1) (vecChain ty e2)
-vecChain _ _ = Nothing
 
-rtreeChain :: NetType -> [AcnExpression] -> Maybe [AcnExpression]
-rtreeChain (RTree 0 _) [e] = Just [e]
-rtreeChain (RTree n _) [e1,DataCon ty _ e2] = liftA2 (:) (Just e1) (rtreeChain ty e2)
-rtreeChain _ _ = Nothing
 
 verilogTypeErrorValue ty = braces (int (netTypeSize ty) <+> braces "1'bx")
 
@@ -499,3 +523,4 @@ bitChar = \case
 int = pretty
 integer = pretty
 string = pretty
+
