@@ -61,6 +61,7 @@ module Netlist.Acn
       -- ** Cartesian Types
     , CartesianType (..)
     , NetConstr (..)
+    , NetField (..)
     , cartesianSize
     , constructorSize
       -- ** Clock Domains
@@ -565,7 +566,7 @@ data CartesianType
     = CartesianType
         { typeName      :: !Identifier
         , constructors  :: [NetConstr]
-        , fields        :: [NetType]
+        , fields        :: [NetField]
         }
     deriving (Show, Generic, NFData)
 
@@ -576,6 +577,14 @@ data NetConstr
         }
     deriving (Show, Generic, NFData)
         
+data NetField
+    = NetField
+        { fieldStart    :: Int
+        , fieldEnd      :: Int
+        , fieldType     :: NetType
+        }
+    deriving (Show, Generic, NFData)
+        
 -- |
 -- Compute size needed to represent a cartesian type. The final
 -- size should be the sum of the number of bits for the constructor
@@ -583,7 +592,7 @@ data NetConstr
 --
 cartesianSize :: CartesianType -> Size
 cartesianSize cty = constructorSize cty + fieldsSize where
-    fieldsSize = sum . map netTypeSize $ fields cty
+    fieldsSize = sum . map (netTypeSize . fieldType) $ fields cty
 
 -- |
 -- Compute the size of the constructor for a Cartesian type.
