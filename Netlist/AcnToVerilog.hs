@@ -171,7 +171,7 @@ acnToVerilogNetDecls addSemi =
 
 -- |
 -- Actually convert a net into a Verilog declaration. As explained in
--- 'NetDeclaration', we only generate the name, type, and initial value
+-- 'NetDeclarator', we only generate the name, type, and initial value
 -- information. We let the declaration processor prepend whichever use
 -- annotation it thinks is appropriate.
 --
@@ -184,13 +184,14 @@ nvNetDecl
     -> NetDeclarator    -- ^ Net to declare.
     -> VerilogM Doc
 nvNetDecl addSemi (NetDeclarator commentM name ty initValM) = do
-    let commentText = maybe "" (comment "//") commentM
     tyText <- netToVerilogType ty
     
     let toInitializer e = do
             eText <- netToVerilogExpr False e
             return $ space <> equals <+> eText
     initText <- maybe (pure "") toInitializer initValM
+    
+    let commentText = maybe "" (comment "//") commentM
     
     return $ tyText <+> pretty name <> initText
           <> if addSemi then semi else emptyDoc
@@ -274,15 +275,21 @@ nvCondAssign
     -> VerilogM Doc
 nvCondAssign dest scrut scrutTy alts = do
     let goCond :: AcnAlternative -> VerilogM Doc
+    
+        -- Alternative with literal: @pat: dest = alt;@.
         goCond (Just c, e) = do
-            cText <- nvLiteral Nothing c -- TODO: proper condition literal reprs
+            -- TODO: proper condition literal reprs
+            cText <- nvLiteral Nothing c
             eText <- netToVerilogExpr False e
             return $ cText <> ":" <+> pretty (netName dest)
                  <+> equals <+> eText <> semi
+        
+        -- Default alternative: @default: dest = altExpr;@.
         goCond (Nothing, e) = do
             eText <- netToVerilogExpr False e
             return $ "default:" <+> pretty (netName dest)
                  <+> equals <+> eText <> semi
+    
     conds <- mapM goCond alts
 
     scrutText <- netToVerilogExpr False scrut
@@ -457,17 +464,23 @@ nvCartesianDc cty@(CartesianType tyName constrs fields) consIndex args = do
     
     return $ braces . hsep $ punctuate comma dcText
   where
-    go :: [(Int, NetType)] -> [(Int, AcnExpression)] -> VerilogM [Doc]
+    go :: [(Int, NetField)] -> [(Int, AcnExpression)] -> VerilogM [Doc]
     go ((n, field):fs) vs
+        -- This field is one of the ones our constructor sets.
         | (ix, e):vs' <- vs
         , n == ix = do
             eText <- netToVerilogExpr False e
             (eText:) <$> go fs vs'
+        
+        -- This field isn't set by the constructor. Fill it with
+        -- don't-cares and move on.
         | otherwise = do
-            let fieldTySize = netTypeSize field
+            let fieldTySize = netTypeSize $ fieldType field
                 fieldText = int fieldTySize <> "'b"
                          <> hcat (replicate fieldTySize "x")
             (fieldText:) <$> go fs vs
+    
+    -- There are no fields left in the type; do nothing.
     go [] _ = return []
 
 
@@ -479,21 +492,29 @@ nvSuperDcApp
 nvSuperDcApp ty consExpr argsM = undefined
 
 nvProject
-    :: NetType          -- ^ Type to project out of.
+    :: CartesianType    -- ^ Type to project out of.
     -> AcnExpression    -- ^ Source expression.
     -> Int              -- ^ Constructor to get a field from.
     -> Int              -- ^ Index of the field to get.
     -> VerilogM Doc
 nvProject ty src consIndex consFieldIndex = do
-    {-let constr     = constructors ty !! consIndex
+    let -- Figure out which field we should use from the constructors.
+        constr     = constructors ty !! consIndex
         fieldIndex = fieldIndices constr !! consFieldIndex
-        start = 
+        field      = fields ty !! fieldIndex
+        
+        startText = int $ fieldStart field
+        endText   = int $ fieldEnd field
+    
+    -- Compute the source expression in parentheses (in case it's lower
+    -- precedence than slicing).
     srcText <- netToVerilogExpr True src
-    return $ srcText <> (braces ) -}
-    undefined
+    return $ srcText <> brackets (endText <> ":" <> startText)
 
 nvSlice :: AcnExpression -> Int -> Int -> VerilogM Doc
-nvSlice src rangeHi rangeLo = undefined
+nvSlice src rangeHi rangeLo = do
+    srcText <- netToVerilogExpr True src
+    return $ srcText <> brackets (int rangeHi <> ":" <> int rangeLo)
                 
 
                 

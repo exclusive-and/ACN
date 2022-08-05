@@ -18,7 +18,7 @@ main = do
         logicId1  = RawIdentifier "logic1" Nothing callStack
         logicNet1 = NetDeclarator (Just "logic 1") logicId1 (BitVector 24) Nothing
         logicId2  = RawIdentifier "logic2" Nothing callStack
-        logicNet2 = NetDeclarator (Just "logic 2") logicId2 (BitVector 24) Nothing
+        logicNet2 = NetDeclarator (Just "logic 2") logicId2 (Cartesian ty) Nothing
 
         
         subComponentId = RawIdentifier "SubComponent" Nothing callStack
@@ -31,8 +31,10 @@ main = do
 
         constr1 = NetConstr (RawIdentifier "cons1" Nothing callStack) [1]
         constr2 = NetConstr (RawIdentifier "cons2" Nothing callStack) [0]
-        fields = [Signed 10, Signed 14]
-        ty     = CartesianType (RawIdentifier "MyType" Nothing callStack) [constr1, constr2] fields
+        constr3 = NetConstr (RawIdentifier "cons3" Nothing callStack) [0, 1]
+        fields = [NetField 14 23 (Signed 10), NetField 0 13 (Signed 14)]
+        ty     = CartesianType (RawIdentifier "MyType" Nothing callStack)
+                    [constr1, constr2] fields
         logicA2 = Assignment logicNet2
                     $ DataCon (Cartesian ty) 1
                         [ Literal (Just (Signed 10, 10)) $ NumLit 5 ]
@@ -41,7 +43,7 @@ main = do
         resNet = NetDeclarator (Just "result") resId (BitVector 24) Nothing
         resA = CondAssignment resNet (Identifier inputId) (BitVector 32)
                     [ (Just $ NumLit 123, Identifier logicId1)
-                    , (Just $ NumLit 456, Identifier logicId2)
+                    , (Just $ NumLit 456, Slice (Identifier logicId2) 23 14)
                     , (Nothing, Literal Nothing $ NumLit 45)
                     ]
 

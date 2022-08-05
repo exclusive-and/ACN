@@ -651,29 +651,32 @@ data InitBehaviour
 data AcnExpression
     = Literal
         !(Maybe (NetType, Size))    -- ^ Literal size and type.
-        !Literal                    -- ^ Literal contents.
-    | Identifier    !Identifier     -- ^ Reference to a net.
+        !Literal                -- ^ Literal contents.
+    | Identifier
+        !Identifier             -- ^ Reference to a net.
     | DataCon
-        !NetType                    -- ^ Type to be constructed.
-        !Int                        -- ^ Index of constructor to use.
-        [AcnExpression]             -- ^ Constructor arguments.
+        !NetType                -- ^ Type to be constructed.
+        !Int                    -- ^ Index of constructor to use.
+        [AcnExpression]         -- ^ Constructor arguments.
     | SuperDataCon
-        !CartesianType              -- ^ Type to be constructed.
-        !AcnExpression              -- ^ Constructor encoding.
-        [Maybe AcnExpression]       -- ^ All fields for this type.
+        !CartesianType          -- ^ Type to be constructed.
+        !AcnExpression          -- ^ Constructor encoding.
+        [Maybe AcnExpression]   -- ^ All fields for this type.
     | Projection
-        !AcnExpression              -- ^ Source expression.
-        !NetType                    -- ^ Type of source expression.
-        !Int                        -- ^ Constructor to project from.
-        !Int                        -- ^ Field to project.
+        !AcnExpression          -- ^ Source expression.
+        !CartesianType
+        -- ^ Type of source expression. Must be Cartesian; primitive types
+        -- don't have constructors we can project from.
+        !Int                    -- ^ Constructor to project from.
+        !Int                    -- ^ Field to project.
     | Slice
-        !AcnExpression              -- ^ Source expression.
-        !Int                        -- ^ High bit index of range.
-        !Int                        -- ^ Low bit index of range.
+        !AcnExpression          -- ^ Source expression.
+        !Int                    -- ^ High bit index of range.
+        !Int                    -- ^ Low bit index of range.
     | BlackBoxE
-        !AcnBlackBox                -- ^ Primitive to defer.
-        BlackBoxContext             -- ^ Calling context.
-        !Bool                       -- ^ Should enclose in parentheses?
+        !AcnBlackBox            -- ^ Primitive to defer.
+        BlackBoxContext         -- ^ Calling context.
+        !Bool                   -- ^ Should enclose in parentheses?
     deriving Show
 
 instance NFData AcnExpression where
