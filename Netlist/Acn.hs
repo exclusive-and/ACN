@@ -38,12 +38,10 @@ module Netlist.Acn
       -- * ACN Declarations
       AcnComponent (..)
     , AcnDeclaration (..)
+      -- ** Net Declarators
+    , NetDeclarator (..)
     , AcnAlternative
     , CommentOrDirective (..)
-      -- ** Net Declarations
-    , NetDeclarator (..)
-    , Identifier (..)
-    , IdentifierType (..)
       -- ** Port Maps
     , PortMap (..)
     , PortDirection (..)
@@ -78,8 +76,9 @@ module Netlist.Acn
     )
   where
 
-import              Netlist.AcnBlackBoxes
-  
+import              Netlist.AcnIds
+import              Netlist.AcnPrimitives
+
 import              Control.DeepSeq
 import              Data.Bool
 import              Data.Eq
@@ -106,7 +105,7 @@ import              CeilingLog
 --
 data AcnComponent
     = AcnComponent
-        { componentName :: !Identifier      -- ^ Name of the component.
+        { componentName :: !AcnId           -- ^ Name of the component.
         , inputs        :: [NetDeclarator]  -- ^ Input ports.
         , logic         :: [AcnDeclaration] -- ^ Internal logic.
         , outputs       :: [AcnDeclaration] -- ^ Output ports\/logic.
@@ -139,8 +138,8 @@ data AcnDeclaration
     | InstDecl
         [NetDeclarator]         -- ^ Created result nets.
         [Attr']                 -- ^ Instance attributes.
-        !Identifier             -- ^ Component name.
-        !Identifier             -- ^ Instance name.
+        !AcnId                  -- ^ Component name.
+        !AcnId                  -- ^ Instance name.
         [()]                    -- ^ Compile-time parameters.
         PortMap                 -- ^ I\/O port configuration.
     | BlackBoxDecl
@@ -157,6 +156,20 @@ data AcnDeclaration
 instance NFData AcnDeclaration where
     rnf x = x `seq` ()
 
+-- |
+-- An ACN net declarator contains the name and type information of a net.
+-- Usage annotations should be decided by examining the declarations that
+-- create the nets.
+--
+data NetDeclarator
+    = NetDeclarator
+        { netComment    :: !(Maybe Text)        -- ^ Optional comment.
+        , netName       :: !AcnId               -- ^ Name of the net.
+        , netType       :: !NetType             -- ^ Net's representable type.
+        , initVal       :: Maybe AcnExpression  -- ^ Optional initial value.
+        }
+    deriving (Show, Generic, NFData)
+    
 -- $acnExamples
 -- 
 -- = Worked Example
@@ -246,52 +259,11 @@ instance NFData AcnDeclaration where
 
 type AcnAlternative = (Maybe Literal, AcnExpression)
 
-    
 data CommentOrDirective
     = Comment   Text
     | Directive Text
     deriving Show
     
-
--- |
--- An ACN net declarator contains the name and type information of a net.
--- Usage annotations should be decided by examining the declarations that
--- create the nets.
---
-data NetDeclarator
-    = NetDeclarator
-        { netComment    :: !(Maybe Text)        -- ^ Optional comment.
-        , netName       :: !Identifier          -- ^ Name of the net.
-        , netType       :: !NetType             -- ^ Net's representable type.
-        , initVal       :: Maybe AcnExpression  -- ^ Optional initial value.
-        }
-    deriving (Show, Generic, NFData)
-
--- |
--- Net names and references.
---
-data Identifier
-    = RawIdentifier
-        { givenName         :: !Text
-        , rawParsed         :: Maybe Identifier
-        , provenance        :: !CallStack
-        }
-    | UniqueIdentifier
-        { baseName          :: !Text
-        , baseNameNoCase    :: !Text
-        , exteionsions      :: [Word]
-        , idType            :: !IdentifierType
-        , hdl               :: !HDL
-        , provenance        :: !CallStack
-        }
-    deriving (Show, Generic, NFData)
-
-data IdentifierType
-    = Basic
-    | Extended
-    deriving (Show, Generic, NFData, Eq)
-
-
 -- |
 -- Map expressions to input or output nets of an ACN component.
 --
@@ -301,7 +273,7 @@ data PortMap
     -- ^ Association in-order: the @n@-th port mapping corresponds with the
     -- @n@-th input of the component.
     | NamedPortMap
-        [ (Identifier, PortDirection, NetType, AcnExpression) ]
+        [ (AcnId, PortDirection, NetType, AcnExpression) ]
     -- ^ Association by name: port mapping @(id, _, ty, _)@ corresponds to
     -- net @NetDeclaration _ id ty _@ in the component.
     deriving Show
@@ -564,7 +536,7 @@ type Size = Int
 --
 data CartesianType
     = CartesianType
-        { typeName      :: !Identifier
+        { typeName      :: !AcnId
         , constructors  :: [NetConstr]
         , fields        :: [NetField]
         }
@@ -572,7 +544,7 @@ data CartesianType
 
 data NetConstr
     = NetConstr
-        { consName      :: !Identifier
+        { consName      :: !AcnId
         , fieldIndices  :: [Int]
         }
     deriving (Show, Generic, NFData)
@@ -650,10 +622,10 @@ data InitBehaviour
 --
 data AcnExpression
     = Literal
-        !(Maybe (NetType, Size))    -- ^ Literal size and type.
+        !(Maybe NetType)        -- ^ Literal size and type.
         !Literal                -- ^ Literal contents.
     | Identifier
-        !Identifier             -- ^ Reference to a net.
+        !AcnId                  -- ^ Reference to a net.
     | DataCon
         !NetType                -- ^ Type to be constructed.
         !Int                    -- ^ Index of constructor to use.

@@ -38,6 +38,7 @@ module Netlist.AcnToVerilog
   where
 
 import              Netlist.Acn
+import              Netlist.AcnIds
 
 import              Control.Applicative
 import              Control.DeepSeq
@@ -312,8 +313,8 @@ nvCondAssign dest scrut scrutTy alts = do
 --
 nvInstance
     :: [Attr']
-    -> Identifier   -- ^ Name of component to generate.
-    -> Identifier   -- ^ Name of instance to generate.
+    -> AcnId        -- ^ Name of component to generate.
+    -> AcnId        -- ^ Name of instance to generate.
     -> [()]         -- ^ Compilation parameters.
     -> PortMap      -- ^ Port configuration.
     -> VerilogM Doc
@@ -364,17 +365,17 @@ netToVerilogExpr shouldParen = \case
     Slice src hi lo
         -> nvSlice src hi lo
     
-nvLiteral :: Maybe (NetType, Size) -> Literal -> VerilogM Doc
+nvLiteral :: Maybe NetType -> Literal -> VerilogM Doc
 nvLiteral tyM = \case
     NumLit i
         | Nothing <- tyM -> return $ integer i
-        | Just (ty@(Index _), _) <- tyM
+        | Just (ty@(Index _)) <- tyM
         -> return $ int (netTypeSize ty) <> "'d" <> integer i
-        | Just (Unsigned _, sz) <- tyM
+        | Just (Unsigned sz) <- tyM
         -> return $ int sz <> "'d" <> integer i
-        | Just (Signed _, sz) <- tyM , i < 0
+        | Just (Signed sz) <- tyM , i < 0
         -> return $ "-" <> int sz <> "'sd" <> integer (abs i)
-        | Just (Signed _, sz) <- tyM
+        | Just (Signed sz) <- tyM
         -> return $ int sz <> "'sd" <> integer i
     BoolLit b
         -> return $ string $ if b then "1'b1" else "1'b0"
@@ -520,9 +521,9 @@ nvSlice src rangeHi rangeLo = do
                 
 comment prefix text = prefix <> " " <> pretty text
 
-instance Pretty Identifier where
-    pretty (RawIdentifier nm _ _) = pretty nm
-    pretty (UniqueIdentifier{..}) = pretty baseName
+instance Pretty AcnId where
+    pretty (VerbatimId nm _ _) = pretty nm
+    pretty _ = error "what"
 
 tupleInputs = undefined
 tupleOutputs = undefined
