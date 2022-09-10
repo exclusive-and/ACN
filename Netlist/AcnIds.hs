@@ -78,6 +78,7 @@ data AcnName
     deriving (Show, Generic, NFData)
 
 -- |
+-- Get the normalized name and extensions of an ACN name as search keys.
 --
 acnKey# :: AcnName -> (Text, [Word])
 acnKey# (AcnName _ nm exts _) = (nm, exts)
@@ -187,6 +188,9 @@ newAcnId# nm idSet =
     (ArithmeticId newKey, idSet')
 
 
+-- |
+-- Cache of most recent extensions indexed by base names and length.
+-- 
 type FreshCache = HashMap Text (IntMap Word)
 
 lookupFreshCache :: FreshCache -> AcnName -> Maybe Word
@@ -210,29 +214,6 @@ updateFreshCache cache nm =
     go0 (go1 (max topExt))
 
 
-newAcnName#
-    :: HasCallStack
-    => (Text -> AcnName)
-    -> Text
-    -> AcnIdSet
-    -> (AcnId, AcnIdSet)
-newAcnName# normalizer nm idSet =
-    newAcnId# (normalizer nm) idSet
-
-suffix#
-    :: HasCallStack
-    => (Text -> AcnName)
-    -> AcnName
-    -> Text
-    -> AcnIdSet
-    -> (AcnId, AcnIdSet)
-suffix# normalizer nm0 affix idSet =
-  let
-    nm1 = normalizer $ originalName nm0 <> "_" <> affix
-    nm2 = nm1 { extensions = extensions nm1 <> extensions nm0 }
-  in
-    newAcnId# nm2 idSet
-
 -- TODO:
 --  * [x] makeBasic
 --        newAcnName#
@@ -249,6 +230,37 @@ suffix# normalizer nm0 affix idSet =
 --  * [x] unsafeFromCoreId
 --        verbatimId#
 --
+
+-- |
+-- Create a new entry in the name database from a string.
+-- 
+newAcnName#
+    :: HasCallStack
+    => (Text -> AcnName)
+    -> Text
+    -> AcnIdSet
+    -> (AcnId, AcnIdSet)
+newAcnName# normalizer nm = newAcnId# (normalizer nm)
+
+{-# INLINE newAcnName# #-}
+
+-- |
+-- Create a new entry in the name database that combines the base
+-- name and suffix into a new ID.
+-- 
+suffix#
+    :: HasCallStack
+    => (Text -> AcnName)
+    -> AcnName
+    -> Text
+    -> AcnIdSet
+    -> (AcnId, AcnIdSet)
+suffix# normalizer nm0 affix idSet =
+  let
+    nm1 = normalizer $ originalName nm0 <> "_" <> affix
+    nm2 = nm1 { extensions = extensions nm1 <> extensions nm0 }
+  in
+    newAcnId# nm2 idSet
     
 
 -- FUNNY DEBUG THINGS
