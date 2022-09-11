@@ -4,13 +4,21 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+-- |
+-- Module       : Netlist.AcnIds
+-- Description  : Language Agnostic Implementation of ACN Identifiers.
+-- 
 module Netlist.AcnIds
-    ( newAcnId#
+    ( -- * Introduction and elimination.
+      newAcnId#
     , acnIdToText#
+      -- * ACN identifier type.
     , AcnId (..)
     , verbatimId#
+      -- * Parsed names.
     , AcnName (..)
     , acnNameToText#
+      -- * Identifier sets.
     , AcnIdSet (nameMap, seenIds)
     , emptyAcnSet
     , lookupAcnId
