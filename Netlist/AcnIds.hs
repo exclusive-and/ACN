@@ -6,8 +6,11 @@
 
 module Netlist.AcnIds
     ( newAcnId#
+    , acnIdToText#
     , AcnId (..)
     , verbatimId#
+    , AcnName (..)
+    , acnNameToText#
     , AcnIdSet (nameMap, seenIds)
     , emptyAcnSet
     , lookupAcnId
@@ -26,6 +29,7 @@ import qualified    Data.IntMap.Strict as IntMap
 import qualified    Data.List as List
 import qualified    Data.Maybe as Maybe
 import              Data.Text (Text (..))
+import qualified    Data.Text as Text
 import              GHC.Generics (Generic)
 import              GHC.Stack
 
@@ -77,6 +81,16 @@ data AcnName
         }
     deriving (Show, Generic, NFData)
 
+-- |
+-- Convert an ACN name to text.
+-- 
+acnNameToText# :: AcnName -> Text
+acnNameToText# nm =
+  let
+    exts = map (Text.pack . show) $ reverse $ extensions nm
+  in
+    Text.intercalate "_" (originalName nm : exts)
+    
 -- |
 -- Get the normalized name and extensions of an ACN name as search keys.
 --
@@ -131,6 +145,20 @@ lookupAcnId ident names =
         ArithmeticId n -> IntMap.lookup n names
         VerbatimId {}  -> Nothing
 
+-- |
+-- Convert an ACN ID to text, either by looking it up in a database
+-- or emitting it verbatim.
+-- 
+acnIdToText# :: AcnId -> AcnIdSet -> Maybe Text
+acnIdToText# ident idSet = case ident of
+    ArithmeticId n ->
+      let
+        nm = IntMap.lookup n $ nameMap idSet
+      in
+        acnNameToText# <$> nm
+    
+    VerbatimId t _ _ -> Just t
+        
 
 -- |
 -- Generate a new identifier, and add its associated name to a name database.
@@ -143,7 +171,7 @@ newAcnId#
 newAcnId# nm idSet =
   let
     -- Record the origin of the new name.
-    nmCopy = nm {nameOrigin = originInfo} where
+    nmCopy = nm { nameOrigin = originInfo } where
         originInfo
             | originIsOn = callStack
             | otherwise  = emptyCallStack
@@ -152,7 +180,7 @@ newAcnId# nm idSet =
     -- been seen, extend it and try again. Otherwise, return as-is.
     newNm
         | nm `HashSet.member` seenIds idSet
-        = nmCopy {extensions = 0 : extensions nm}
+        = nmCopy { extensions = 0 : extensions nm }
 
         | otherwise
         = nmCopy
@@ -166,7 +194,7 @@ newAcnId# nm idSet =
             oldExts = extensions newNm
             newExts = currentMax + 1 : tail oldExts
           in
-            newNm {extensions = newExts}
+            newNm { extensions = newExts }
 
         Nothing -> newNm
 
@@ -221,8 +249,8 @@ updateFreshCache cache nm =
 --  * [x] suffix
 --        suffix#
 --
---  * [ ] toText
---
+--  * [x] toText
+--        acnNameToText#
 --
 --  * [x] next
 --
