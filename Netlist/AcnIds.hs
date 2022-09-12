@@ -1,8 +1,10 @@
 
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 -- |
 -- Module       : Netlist.AcnIds
@@ -10,7 +12,7 @@
 -- 
 module Netlist.AcnIds
     ( -- * Introduction and elimination.
-      newAcnId#
+      newAcnIdFromCache#
     , acnIdToText#
       -- * ACN identifier type.
     , AcnId (..)
@@ -18,14 +20,26 @@ module Netlist.AcnIds
       -- * Parsed names.
     , AcnName (..)
     , acnNameToText#
-      -- * Identifier sets.
+      -- * Identifier databases.
     , AcnIdSet (nameMap, seenIds)
     , emptyAcnSet
-    , lookupAcnId
+    , lookupAcnId#
+      -- * API and monadic functions.
+    , newAcnId#
+    , HasAcnIdSet (..)
+    , AcnIdSetMonad (..)
+    , newAcnName
+    , newAcnName#
+--    , suffix
+    , suffix#
     )
   where
 
 import              Control.DeepSeq
+import              Control.Lens (Lens', (.=))
+import qualified    Control.Lens as Lens
+import qualified    Control.Monad.State.Lazy as Lazy
+import qualified    Control.Monad.State.Strict as Strict
 import              Data.Function (($), (&))
 import              Data.Hashable (Hashable (..))
 import              Data.HashMap.Strict (HashMap)
@@ -41,6 +55,8 @@ import qualified    Data.Text as Text
 import              GHC.Generics (Generic)
 import              GHC.Stack
 
+
+-- CRITICAL TYPES
 
 -- |
 -- Identifiers in ACN.
@@ -147,11 +163,14 @@ emptyAcnSet = AcnIdSet
 -- |
 -- Lookup an ACN identifier in a name database.
 --
-lookupAcnId :: AcnId -> IntMap AcnName -> Maybe AcnName
-lookupAcnId ident names =
+lookupAcnId# :: AcnId -> IntMap AcnName -> Maybe AcnName
+lookupAcnId# ident names =
     case ident of
         ArithmeticId n -> IntMap.lookup n names
         VerbatimId {}  -> Nothing
+
+
+-- INTRODUCTION AND ELMINATION FUNCTIONS
 
 -- |
 -- Convert an ACN ID to text, either by looking it up in a database
@@ -166,17 +185,16 @@ acnIdToText# ident idSet = case ident of
         acnNameToText# <$> nm
     
     VerbatimId t _ _ -> Just t
-        
 
 -- |
--- Generate a new identifier, and add its associated name to a name database.
+-- Create and cache a new identifier.
 --
-newAcnId#
+newAcnIdFromCache#
     :: HasCallStack
-    => AcnName      -- ^ 
-    -> AcnIdSet     -- ^ Working ID database.
+    => AcnName
+    -> AcnIdSet
     -> (AcnId, AcnIdSet)
-newAcnId# nm idSet =
+newAcnIdFromCache# nm idSet =
   let
     -- Record the origin of the new name.
     nmCopy = nm { nameOrigin = originInfo } where
@@ -184,35 +202,27 @@ newAcnId# nm idSet =
             | originIsOn = callStack
             | otherwise  = emptyCallStack
 
-    -- Check for this name in the set of already seen IDs. If it's already
-    -- been seen, extend it and try again. Otherwise, return as-is.
-    newNm
-        | nm `HashSet.member` seenIds idSet
-        = nmCopy { extensions = 0 : extensions nm }
-
-        | otherwise
-        = nmCopy
-
-    -- Check the most recent top extension for this name in the fresh cache.
+    -- Check the fresh cache for the most recent top-level extension for
+    -- this name.
     fresh = freshCache idSet
-    
-    newNm' = case lookupFreshCache fresh newNm of
+
+    newNm = case lookupFreshCache fresh nmCopy of
         Just currentMax ->
           let
-            oldExts = extensions newNm
-            newExts = currentMax + 1 : tail oldExts
+            oldExts = drop 1 $ extensions nmCopy
+            newExts = currentMax + 1 : oldExts
           in
-            newNm { extensions = newExts }
+            nmCopy { extensions = newExts }
 
-        Nothing -> newNm
+        Nothing -> nmCopy
 
-    fresh' = updateFreshCache fresh newNm'
-        
+    fresh' = updateFreshCache fresh newNm
+
     -- Get the next key, and update the name database.
     newKey = idSupply idSet
 
-    names' = nameMap idSet & IntMap.insert newKey newNm'
-    seen'  = seenIds idSet & HashSet.insert newNm'
+    names' = nameMap idSet & IntMap.insert newKey newNm
+    seen'  = seenIds idSet & HashSet.insert newNm
 
     idSet' = idSet
         { nameMap    = names'
@@ -222,6 +232,27 @@ newAcnId# nm idSet =
         }
   in
     (ArithmeticId newKey, idSet')
+
+-- |
+--
+newAcnId#
+    :: HasCallStack
+    => AcnName      -- ^ 
+    -> AcnIdSet     -- ^ Working ID database.
+    -> (AcnId, AcnIdSet)
+newAcnId# nm idSet =
+  let
+    -- Check for this name in the set of already seen IDs. If it's already
+    -- been seen, extend it and try again. Otherwise, return as-is.
+    newNm
+        | nm `HashSet.member` seenIds idSet
+        = nm { extensions = 0 : extensions nm }
+
+        | otherwise
+        = nm
+  in
+    newAcnIdFromCache# newNm idSet
+
 
 
 -- |
@@ -250,6 +281,50 @@ updateFreshCache cache nm =
     go0 (go1 (max topExt))
 
 
+-- EXTERNAL API AND CONVENIENCE FUNCTIONS
+
+-- |
+--
+--
+class HasAcnIdSet s where
+    acnIdentifierSet :: Lens' s AcnIdSet
+
+instance HasAcnIdSet AcnIdSet where
+    acnIdentifierSet = ($)
+
+-- |
+--
+--
+class Monad m => AcnIdSetMonad m where
+    acnIdSetM :: (AcnIdSet -> AcnIdSet) -> m AcnIdSet
+
+instance HasAcnIdSet s => AcnIdSetMonad (Strict.State s) where
+    acnIdSetM f = do
+        idSet <- Lens.use acnIdentifierSet
+        acnIdentifierSet .= f idSet
+        Lens.use acnIdentifierSet
+
+instance HasAcnIdSet s => AcnIdSetMonad (Lazy.State s) where
+    acnIdSetM f = do
+        idSet <- Lens.use acnIdentifierSet
+        acnIdentifierSet .= f idSet
+        Lens.use acnIdentifierSet
+
+
+-- |
+-- Monadically apply a function on an ambient ID database.
+--
+withAcnIdSetM
+    :: AcnIdSetMonad m
+    => (AcnIdSet -> (b, AcnIdSet))
+    -> m b
+withAcnIdSetM f = do
+    idSet <- acnIdSetM id
+    let (b, idSet') = f idSet
+    _ <- acnIdSetM (const idSet')
+    return b
+
+
 -- TODO:
 --  * [x] makeBasic
 --        newAcnName#
@@ -261,7 +336,7 @@ updateFreshCache cache nm =
 --        acnNameToText#
 --
 --  * [x] next
---
+--        newAcnIdFromCache#
 --
 --  * [x] unsafeFromCoreId
 --        verbatimId#
@@ -279,6 +354,9 @@ newAcnName#
 newAcnName# normalizer nm = newAcnId# (normalizer nm)
 
 {-# INLINE newAcnName# #-}
+
+newAcnName normalizer nm =
+    withAcnIdSetM (newAcnName# normalizer nm)
 
 -- |
 -- Create a new entry in the name database that combines the base
@@ -298,6 +376,10 @@ suffix# normalizer nm0 affix idSet =
   in
     newAcnId# nm2 idSet
     
+-- TODO: add monadic normalizer fetching
+--suffix nm affix =
+--    withAcnIdSetM (suffix# normalizer nm affix)
+
 
 -- FUNNY DEBUG THINGS
 
