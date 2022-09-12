@@ -283,9 +283,6 @@ updateFreshCache cache nm =
 
 -- EXTERNAL API AND CONVENIENCE FUNCTIONS
 
--- |
---
---
 class HasAcnIdSet s where
     acnIdentifierSet :: Lens' s AcnIdSet
 
@@ -293,7 +290,7 @@ instance HasAcnIdSet AcnIdSet where
     acnIdentifierSet = ($)
 
 -- |
---
+-- Types with an ID database that can be used and updated monadically.
 --
 class Monad m => AcnIdSetMonad m where
     acnIdSetM :: (AcnIdSet -> AcnIdSet) -> m AcnIdSet
@@ -309,6 +306,12 @@ instance HasAcnIdSet s => AcnIdSetMonad (Lazy.State s) where
         idSet <- Lens.use acnIdentifierSet
         acnIdentifierSet .= f idSet
         Lens.use acnIdentifierSet
+
+-- |
+-- Monads with a name normalizer built in.
+--
+class Monad m => AcnNameNormalizerMonad m where
+    acnNameNormalizerM :: m (Text -> AcnName)
 
 
 -- |
@@ -355,7 +358,12 @@ newAcnName# normalizer nm = newAcnId# (normalizer nm)
 
 {-# INLINE newAcnName# #-}
 
-newAcnName normalizer nm =
+newAcnName
+    :: (HasCallStack, AcnIdSetMonad m, AcnNameNormalizerMonad m)
+    => Text
+    -> m AcnId
+newAcnName nm = do
+    normalizer <- acnNameNormalizerM
     withAcnIdSetM (newAcnName# normalizer nm)
 
 -- |
@@ -376,9 +384,14 @@ suffix# normalizer nm0 affix idSet =
   in
     newAcnId# nm2 idSet
     
--- TODO: add monadic normalizer fetching
---suffix nm affix =
---    withAcnIdSetM (suffix# normalizer nm affix)
+suffix
+    :: (HasCallStack, AcnIdSetMonad m, AcnNameNormalizerMonad m)
+    => AcnName
+    -> Text
+    -> m AcnId
+suffix nm affix = do
+    normalizer <- acnNameNormalizerM
+    withAcnIdSetM (suffix# normalizer nm affix)
 
 
 -- FUNNY DEBUG THINGS
@@ -387,3 +400,4 @@ suffix# normalizer nm0 affix idSet =
 -- Should we trace the origins of identifiers?
 -- 
 originIsOn = True
+
