@@ -310,7 +310,7 @@ instance HasAcnIdSet s => AcnIdSetMonad (Lazy.State s) where
 -- |
 -- Monads with a name normalizer built in.
 --
-class Monad m => AcnNameNormalizerMonad m where
+class AcnIdSetMonad m => AcnNameMonad m where
     acnNameNormalizerM :: m (Text -> AcnName)
 
 
@@ -359,7 +359,7 @@ newAcnName# normalizer nm = newAcnId# (normalizer nm)
 {-# INLINE newAcnName# #-}
 
 newAcnName
-    :: (HasCallStack, AcnIdSetMonad m, AcnNameNormalizerMonad m)
+    :: (HasCallStack, AcnNameMonad m)
     => Text
     -> m AcnId
 newAcnName nm = do
@@ -385,7 +385,7 @@ suffix# normalizer nm0 affix idSet =
     newAcnId# nm2 idSet
     
 suffix
-    :: (HasCallStack, AcnIdSetMonad m, AcnNameNormalizerMonad m)
+    :: (HasCallStack, AcnNameMonad m)
     => AcnName
     -> Text
     -> m AcnId
