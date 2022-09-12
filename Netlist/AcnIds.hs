@@ -28,6 +28,7 @@ module Netlist.AcnIds
     , newAcnId#
     , HasAcnIdSet (..)
     , AcnIdSetMonad (..)
+    , AcnNameMonad (..)
     , newAcnName
     , newAcnName#
 --    , suffix
@@ -295,6 +296,19 @@ instance HasAcnIdSet AcnIdSet where
 class Monad m => AcnIdSetMonad m where
     acnIdSetM :: (AcnIdSet -> AcnIdSet) -> m AcnIdSet
 
+-- |
+-- Monadically apply a function on an ambient ID database.
+--
+withAcnIdSetM
+    :: AcnIdSetMonad m
+    => (AcnIdSet -> (b, AcnIdSet))
+    -> m b
+withAcnIdSetM f = do
+    idSet <- acnIdSetM id
+    let (b, idSet') = f idSet
+    _ <- acnIdSetM (const idSet')
+    return b
+
 instance HasAcnIdSet s => AcnIdSetMonad (Strict.State s) where
     acnIdSetM f = do
         idSet <- Lens.use acnIdentifierSet
@@ -312,20 +326,6 @@ instance HasAcnIdSet s => AcnIdSetMonad (Lazy.State s) where
 --
 class AcnIdSetMonad m => AcnNameMonad m where
     acnNameNormalizerM :: m (Text -> AcnName)
-
-
--- |
--- Monadically apply a function on an ambient ID database.
---
-withAcnIdSetM
-    :: AcnIdSetMonad m
-    => (AcnIdSet -> (b, AcnIdSet))
-    -> m b
-withAcnIdSetM f = do
-    idSet <- acnIdSetM id
-    let (b, idSet') = f idSet
-    _ <- acnIdSetM (const idSet')
-    return b
 
 
 -- TODO:
