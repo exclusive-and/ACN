@@ -20,18 +20,19 @@ module Netlist.AcnIds
       -- * Parsed names.
     , AcnName (..)
     , acnNameToText#
+    , NameType (..)
       -- * Identifier databases.
     , AcnIdSet (nameMap, seenIds)
     , emptyAcnSet
-    , lookupAcnId#
       -- * API and monadic functions.
+    , lookupAcnId#
     , newAcnId#
     , HasAcnIdSet (..)
     , AcnIdSetMonad (..)
     , AcnNameMonad (..)
     , newAcnName
     , newAcnName#
---    , suffix
+    , suffix
     , suffix#
     )
   where
@@ -91,7 +92,7 @@ verbatimId# name =
 
 
 -- |
---
+-- Normalized names stored in a database indexed by arithmetic identifiers.
 --
 data AcnName
     = AcnName
@@ -101,6 +102,7 @@ data AcnName
         -- ^ Version of 'originalName' converted depending on desired lookup
         -- behaviour. Avoids name collisions in generated HDL.
         , extensions        :: [Word]
+        , nameType          :: NameType
         , nameOrigin        :: CallStack
         -- ^ The origin of this name in the compiler.
         }
@@ -136,6 +138,9 @@ instance Hashable AcnName where
       in
         uncurry hash# . acnKey#
 
+data NameType = Basic | Extended
+    deriving (Show, Generic, NFData)
+
 
 -- |
 -- Name database for assisting ACN identifier generation.
@@ -161,15 +166,6 @@ emptyAcnSet = AcnIdSet
     , freshCache = HashMap.empty
     }
 
--- |
--- Lookup an ACN identifier in a name database.
---
-lookupAcnId# :: AcnId -> IntMap AcnName -> Maybe AcnName
-lookupAcnId# ident names =
-    case ident of
-        ArithmeticId n -> IntMap.lookup n names
-        VerbatimId {}  -> Nothing
-
 
 -- INTRODUCTION AND ELMINATION FUNCTIONS
 
@@ -192,8 +188,8 @@ acnIdToText# ident idSet = case ident of
 --
 newAcnIdFromCache#
     :: HasCallStack
-    => AcnName
-    -> AcnIdSet
+    => AcnName      -- ^ Normalized identifier name.
+    -> AcnIdSet     -- ^ Working ID database.
     -> (AcnId, AcnIdSet)
 newAcnIdFromCache# nm idSet =
   let
@@ -238,8 +234,8 @@ newAcnIdFromCache# nm idSet =
 --
 newAcnId#
     :: HasCallStack
-    => AcnName      -- ^ 
-    -> AcnIdSet     -- ^ Working ID database.
+    => AcnName
+    -> AcnIdSet
     -> (AcnId, AcnIdSet)
 newAcnId# nm idSet =
   let
@@ -253,8 +249,6 @@ newAcnId# nm idSet =
         = nm
   in
     newAcnIdFromCache# newNm idSet
-
-
 
 -- |
 -- Cache of most recent extensions indexed by base names and length.
@@ -283,6 +277,16 @@ updateFreshCache cache nm =
 
 
 -- EXTERNAL API AND CONVENIENCE FUNCTIONS
+
+-- |
+-- Lookup an ACN identifier in a name database.
+--
+lookupAcnId# :: AcnId -> IntMap AcnName -> Maybe AcnName
+lookupAcnId# ident names =
+    case ident of
+        ArithmeticId n -> IntMap.lookup n names
+        VerbatimId {}  -> Nothing
+
 
 class HasAcnIdSet s where
     acnIdentifierSet :: Lens' s AcnIdSet
