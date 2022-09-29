@@ -14,25 +14,32 @@ module Netlist.AcnIds
     ( -- * Introduction and elimination.
       newAcnIdFromCache#
     , acnIdToText#
+
       -- * ACN identifier type.
     , AcnId (..)
     , verbatimId#
+
       -- * Parsed names.
     , AcnName (..)
     , acnNameToText#
     , NameType (..)
+
       -- * Identifier databases.
+    , HasAcnIdSet (..)
     , AcnIdSet (nameMap, seenIds)
     , emptyAcnSet
+
       -- * API and monadic functions.
-    , lookupAcnId#
-    , newAcnId#
-    , HasAcnIdSet (..)
+      -- ** Monadic interface.
     , AcnIdSetMonad (..)
     , AcnNameMonad (..)
     , newAcnName
-    , newAcnName#
     , suffix
+
+      -- ** Non-monadic interface.
+    , lookupAcnId#
+    , newAcnId#
+    , newAcnName#
     , suffix#
     )
   where
@@ -122,7 +129,7 @@ acnNameToText# nm =
 -- Get the normalized name and extensions of an ACN name as search keys.
 --
 acnKey# :: AcnName -> (Text, [Word])
-acnKey# (AcnName _ nm exts _) = (nm, exts)
+acnKey# (AcnName _ nm exts _ _) = (nm, exts)
 
 instance Eq AcnName where
     id1 == id2 = acnKey# id1 == acnKey# id2
@@ -141,6 +148,12 @@ instance Hashable AcnName where
 data NameType = Basic | Extended
     deriving (Show, Generic, NFData)
 
+
+class HasAcnIdSet s where
+    acnIdentifierSet :: Lens' s AcnIdSet
+
+instance HasAcnIdSet AcnIdSet where
+    acnIdentifierSet = ($)
 
 -- |
 -- Name database for assisting ACN identifier generation.
@@ -287,12 +300,6 @@ lookupAcnId# ident names =
         ArithmeticId n -> IntMap.lookup n names
         VerbatimId {}  -> Nothing
 
-
-class HasAcnIdSet s where
-    acnIdentifierSet :: Lens' s AcnIdSet
-
-instance HasAcnIdSet AcnIdSet where
-    acnIdentifierSet = ($)
 
 -- |
 -- Types with an ID database that can be used and updated monadically.

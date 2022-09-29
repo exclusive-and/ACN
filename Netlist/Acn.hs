@@ -35,44 +35,50 @@ module Netlist.Acn
     ( -- $acnExamples
       -- $acnBlackBoxes
       
-      -- * ACN Declarations
+      -- * Netlist Syntax
+      -- ** Declarations
       AcnComponent (..)
     , AcnDeclaration (..)
-      -- ** Net Declarators
-    , NetDeclarator (..)
     , AcnAlternative
     , CommentOrDirective (..)
-      -- ** Port Maps
     , PortMap (..)
     , PortDirection (..)
-      -- ** ACN Black Boxes
+
+      -- ** Expressions
+    , AcnExpression (..)
+    , Literal (..)
+    , VerilogBit (..)
+
+      -- ** Net Declarators
+    , NetDeclarator (..) 
+
+      -- * Black Boxes
     , AcnBlackBox (..)
     , BlackBoxContext (..)
     , BlackBoxArg
+
       -- * Netlist Types
     , NetTyCon (..)
+
       -- ** Representable Netlist Types
     , NetType (..)
     , Attr' (..)
     , netTypeSize
-    , Size
+
       -- ** Cartesian Types
     , CartesianType (..)
     , NetConstr (..)
     , NetField (..)
     , cartesianSize
     , constructorSize
+
       -- ** Clock Domains
     , Domain (..)
     , DomainName
     , ActiveEdge (..)
     , ResetKind (..)
     , ResetPolarity (..)
-    , InitBehaviour (..)
-      -- * Representable Expressions
-    , AcnExpression (..)
-    , Literal (..)
-    , VerilogBit (..)
+    , InitBehaviour (..)  
     )
   where
 
@@ -280,6 +286,67 @@ data PortMap
 
 data PortDirection = In | Out
     deriving (Show, Generic, NFData)
+
+
+-- |
+-- Continuous logic expressions.
+--
+data AcnExpression
+    = Literal
+        !(Maybe NetType)        -- ^ Literal size and type.
+        !Literal                -- ^ Literal contents.
+    | Identifier
+        !AcnId                  -- ^ Reference to a net.
+    | DataCon
+        !NetType                -- ^ Type to be constructed.
+        !Int                    -- ^ Index of constructor to use.
+        [AcnExpression]         -- ^ Constructor arguments.
+    | SuperDataCon
+        !CartesianType          -- ^ Type to be constructed.
+        !AcnExpression          -- ^ Constructor encoding.
+        [Maybe AcnExpression]   -- ^ All fields for this type.
+    | Projection
+        !AcnExpression          -- ^ Source expression.
+        !CartesianType
+        -- ^ Type of source expression. Must be Cartesian; primitive types
+        -- don't have constructors we can project from.
+        !Int                    -- ^ Constructor to project from.
+        !Int                    -- ^ Field to project.
+    | Slice
+        !AcnExpression          -- ^ Source expression.
+        !Int                    -- ^ High bit index of range.
+        !Int                    -- ^ Low bit index of range.
+    | BlackBoxE
+        !AcnBlackBox            -- ^ Primitive to defer.
+        BlackBoxContext         -- ^ Calling context.
+        !Bool                   -- ^ Should enclose in parentheses?
+    deriving Show
+
+instance NFData AcnExpression where
+    rnf x = x `seq` ()
+
+-- |
+-- Expression-level constants and literals.
+--
+data Literal
+    = NumLit    !Integer            -- ^ Number literal
+    | BoolLit   !Bool               -- ^ Boolean literal
+    | BitLit    !VerilogBit         -- ^ Bit literal
+    | BitVecLit !Integer !Integer   -- ^ BitVector literal
+    | VecLit    [Literal]           -- ^ Vector literal
+    | BlobLit   !String !String     -- ^ Blob literal
+    | StringLit !String             -- ^ String literal
+    deriving (Eq, Show)
+
+-- |
+-- IEEE 1364 four-valued logic literals.
+--
+data VerilogBit
+    = H -- ^ High
+    | L -- ^ Low
+    | U -- ^ Undefined
+    | Z -- ^ High-impedance
+    deriving (Eq, Show, Typeable, Lift)
     
 
 -- |
@@ -457,7 +524,7 @@ attrName = \case
 -- N.B. any zero-width types should have been filtered by Core to netlist
 -- type conversion.
 --
-netTypeSize :: NetType -> Size
+netTypeSize :: NetType -> Int
 netTypeSize = \case
     Annotated _ ty      -> netTypeSize ty
     Clock _             -> 1
@@ -478,7 +545,6 @@ netTypeSize = \case
     BiDirectional Out _ -> 0
     File                -> 32
 
-type Size = Int
     
 -- |
 -- Programmer-defined algebraic data types. Sum-of-product types get
@@ -562,14 +628,14 @@ data NetField
 -- size should be the sum of the number of bits for the constructor
 -- with the number of bits needed for all fields.
 --
-cartesianSize :: CartesianType -> Size
+cartesianSize :: CartesianType -> Int
 cartesianSize cty = constructorSize cty + fieldsSize where
     fieldsSize = sum . map (netTypeSize . fieldType) $ fields cty
 
 -- |
 -- Compute the size of the constructor for a Cartesian type.
 --
-constructorSize :: CartesianType -> Size
+constructorSize :: CartesianType -> Int
 constructorSize =
     fromMaybe 0 . clogBase 2 . toInteger . length . constructors
 
@@ -617,60 +683,4 @@ data InitBehaviour
     deriving (Show, Generic, NFData)
 
     
--- |
--- Well-typed representable expressions.
---
-data AcnExpression
-    = Literal
-        !(Maybe NetType)        -- ^ Literal size and type.
-        !Literal                -- ^ Literal contents.
-    | Identifier
-        !AcnId                  -- ^ Reference to a net.
-    | DataCon
-        !NetType                -- ^ Type to be constructed.
-        !Int                    -- ^ Index of constructor to use.
-        [AcnExpression]         -- ^ Constructor arguments.
-    | SuperDataCon
-        !CartesianType          -- ^ Type to be constructed.
-        !AcnExpression          -- ^ Constructor encoding.
-        [Maybe AcnExpression]   -- ^ All fields for this type.
-    | Projection
-        !AcnExpression          -- ^ Source expression.
-        !CartesianType
-        -- ^ Type of source expression. Must be Cartesian; primitive types
-        -- don't have constructors we can project from.
-        !Int                    -- ^ Constructor to project from.
-        !Int                    -- ^ Field to project.
-    | Slice
-        !AcnExpression          -- ^ Source expression.
-        !Int                    -- ^ High bit index of range.
-        !Int                    -- ^ Low bit index of range.
-    | BlackBoxE
-        !AcnBlackBox            -- ^ Primitive to defer.
-        BlackBoxContext         -- ^ Calling context.
-        !Bool                   -- ^ Should enclose in parentheses?
-    deriving Show
-
-instance NFData AcnExpression where
-    rnf x = x `seq` ()
-
-data Literal
-    = NumLit    !Integer            -- ^ Number literal
-    | BoolLit   !Bool               -- ^ Boolean literal
-    | BitLit    !VerilogBit         -- ^ Bit literal
-    | BitVecLit !Integer !Integer   -- ^ BitVector literal
-    | VecLit    [Literal]           -- ^ Vector literal
-    | BlobLit   !String !String     -- ^ Blob literal
-    | StringLit !String             -- ^ String literal
-    deriving (Eq, Show)
-
--- |
--- IEEE 1364 four-valued logic literals.
---
-data VerilogBit
-    = H -- ^ High
-    | L -- ^ Low
-    | U -- ^ Undefined
-    | Z -- ^ High-impedance
-    deriving (Eq, Show, Typeable, Lift)
 
