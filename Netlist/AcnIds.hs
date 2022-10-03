@@ -85,6 +85,21 @@ data AcnId
     deriving (Show, Generic, NFData)
 
 -- |
+-- Get an version of an ACN identifier that can be compared.
+--
+acnKey# :: AcnId -> Either Int Text
+acnKey# = \case
+    ArithmeticId n    -> Left n
+    VerbatimId nm _ _ -> Right nm
+
+instance Eq AcnId where
+    (==) = (==) `on` acnKey#
+    (/=) = (/=) `on` acnKey#
+
+instance Ord AcnId where
+    compare = compare `on` acnKey#
+
+-- |
 -- Create an ACN identifier verbatim from some text. Doesn't update the
 -- name database, and doesn't sanitize; just use the name exactly as given.
 --
@@ -128,12 +143,12 @@ acnNameToText# nm =
 -- |
 -- Get the normalized name and extensions of an ACN name as search keys.
 --
-acnKey# :: AcnName -> (Text, [Word])
-acnKey# (AcnName _ nm exts _ _) = (nm, exts)
+acnNameKey# :: AcnName -> (Text, [Word])
+acnNameKey# (AcnName _ nm exts _ _) = (nm, exts)
 
 instance Eq AcnName where
-    id1 == id2 = acnKey# id1 == acnKey# id2
-    id1 /= id2 = acnKey# id1 /= acnKey# id2
+    (==) = (==) `on` acnNameKey#
+    (/=) = (/=) `on` acnNameKey#
 
 instance Hashable AcnName where
     hashWithSalt salt = hashWithSalt salt . hash
@@ -143,7 +158,7 @@ instance Hashable AcnName where
         fuzz factor ext = factor * factor * ext
         hash# nm exts = hash (nm, List.foldl' fuzz 2 exts)
       in
-        uncurry hash# . acnKey#
+        uncurry hash# . acnNameKey#
 
 data NameType = Basic | Extended
     deriving (Show, Generic, NFData)

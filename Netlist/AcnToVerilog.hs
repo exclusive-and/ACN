@@ -6,7 +6,7 @@
 
 module Netlist.AcnToVerilog
     ( -- * Backend Monad
-      VerilogState (..)
+      VerilogState
     , VerilogM
       -- * ACN Component Translation
     , acnToVerilogComponent
@@ -42,6 +42,7 @@ import              Netlist.AcnIds
 
 import              Control.Applicative
 import              Control.DeepSeq
+import              Control.Lens (makeLenses)
 import              Control.Monad
 import              Control.Monad.State (State)
 import              Control.Monad.State.Class
@@ -72,23 +73,29 @@ type Doc = PP.Doc ()
 
 data VerilogState
     = VerilogState
-        { _allowTernary :: Bool }
+        { _acnIdSet :: AcnIdSet }
+
+makeLenses ''VerilogState
+
+instance HasAcnIdSet VerilogState where
+    acnIdentifierSet = acnIdSet
 
 type VerilogM = State VerilogState
 
+
+prettyId :: AcnId -> VerilogM Doc
+prettyId acnId =
+    pretty . acnIdToText# acnId <$> acnIdSetM
 
 -- |
 -- Converts an ACN component directly into a Verilog module.
 --
 acnToVerilogComponent :: AcnComponent -> VerilogM Doc
 acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
-    inPorts  <- mapM nvInput inputs
-    outPorts <- mapM nvOutput outputs
-    
-    let portsText = tupleInputs inPorts
-                 <> tupleOutputs outPorts <> semi
-        moduleHeader = "module" <+> pretty name <> line
-                    <> indent 4 portsText <> line
+    portsText <- genModuleIOList inputs outputs
+
+    let moduleHeader = "module" <+> pretty name <> line
+                    <> indent 4 portsText <> semi <> line
     
     logicNetsText   <- acnToVerilogNetDecls True logic
     logicDeclsText  <- acnToVerilogDecls logic
@@ -101,32 +108,44 @@ acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
     return $ moduleHeader <> line
           <> indent 2 moduleBody <> line
           <> "endmodule"
+
+genModuleIOList :: [NetDeclarator] -> [AcnDeclaration] -> VerilogM Doc
+genModuleIOList inputNets outputNets = do
+    inputs  <- mapM declareInput inputNets
+    outputs <- mapM declareOutput outputNets
+
+    let inputText = case inputs of
+            []
+                -> lparen <+> string "// No inputs." <> line
+            (x:xs)
+                -> lparen <+> string "// Inputs." <> line
+                <> (string "  " <> x) <> line
+                <> vcat (map commafy xs) <> line
+
+        outputPrefix
+            | null inputs = string "  "
+            | otherwise   = comma <> space
+
+        outputText = case outputs of
+            []
+                -> string "  // No outputs." <> line <> rparen
+            (x:xs)
+                -> outputPrefix <> x <> line
+                <> ( if null xs then emptyDoc
+                                else vcat (map commafy xs) <> line )
+                <> rparen
+
+    return $ inputText <> outputText
   where
-    nvInput :: NetDeclarator -> VerilogM Doc
-    nvInput = fmap ("input" <+>) . nvNetDecl False
+    declareInput :: NetDeclarator -> VerilogM Doc
+    declareInput = fmap ("input" <+>) . nvNetDecl False
     
-    nvOutput :: AcnDeclaration -> VerilogM Doc
-    nvOutput decl = do
+    declareOutput :: AcnDeclaration -> VerilogM Doc
+    declareOutput decl = do
         netDeclText <- acnToVerilogNetDecl False decl
         return $ "output" <+> netDeclText
-      
-    tupleInputs = \case
-        []     -> lparen <+> string "// No inputs." <> line
-        (x:xs) -> lparen <+> string "// Inputs." <> line
-               <> (string "  " <> x) <> line
-               <> vcat (map commafy xs) <> line
-               
-    tupleOutputs = \case
-        []     -> string "  // No outputs." <> line <> rparen
-        (x:xs) -> string "  // Outputs." <> line
-               <> (if not $ null inputs
-                      then comma <> space
-                      else string "  ")
-               <> x <> line
-               <> (if null xs
-                      then emptyDoc
-                      else vcat (map commafy xs) <> line)
-               <> rparen
+
+
 
 -- |
 -- Extract a Verilog net declaration from an ACN logic declaration.
@@ -521,9 +540,6 @@ nvSlice src rangeHi rangeLo = do
                 
 comment prefix text = prefix <> " " <> pretty text
 
-instance Pretty AcnId where
-    pretty (VerbatimId nm _ _) = pretty nm
-    pretty _ = error "what"
 
 tupleInputs = undefined
 tupleOutputs = undefined

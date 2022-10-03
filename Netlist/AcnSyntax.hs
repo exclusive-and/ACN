@@ -7,7 +7,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
--- Module       : Netlist.Acn
+-- Module       : Netlist.AcnSyntax
 -- Description  : ACN Hardware Description Language Abstract Syntax
 -- Copyright    : (c) Simon Lovell Bart, 2022
 -- License      : BSD2
@@ -31,7 +31,7 @@
 -- considered an error, as it will result in short circuits if one
 -- cell grounds the wire while another cell powers it.
 -- 
-module Netlist.Acn
+module Netlist.AcnSyntax
     ( -- $acnExamples
       -- $acnBlackBoxes
       
@@ -39,6 +39,8 @@ module Netlist.Acn
       -- ** Declarations
       AcnComponent (..)
     , AcnDeclaration (..)
+    , AcnBindings
+    , SortedDecl (..)
     , AcnAlternative
     , CommentOrDirective (..)
     , PortMap (..)
@@ -88,8 +90,7 @@ import              Netlist.AcnPrimitives
 import              Control.DeepSeq
 import              Data.Bool
 import              Data.Eq
-import              Data.IntMap (IntMap (..))
-import qualified    Data.IntMap as IntMap
+import              Data.Map (Map (..))
 import qualified    Data.Kind as Kind
 import              Data.List
 import              Data.Maybe
@@ -175,7 +176,24 @@ data NetDeclarator
         , initVal       :: Maybe AcnExpression  -- ^ Optional initial value.
         }
     deriving (Show, Generic, NFData)
-    
+
+-- |
+-- Map of ACN identifiers to the declarations that create them.
+--
+-- N.B. that it's possible, but rare, for multiple IDs to map to the same
+-- declaration (e.g. in the case of instance declarations).
+--
+type AcnBindings = Map AcnId SortedDecl
+
+-- |
+-- Region-annotated declarations and declarators. Helpful for optimizing,
+-- as some optimizations are only applicable to certain regions.
+--
+data SortedDecl
+    = Input  NetDeclarator
+    | Logic  AcnDeclaration
+    | Output AcnDeclaration
+
 -- $acnExamples
 -- 
 -- = Worked Example
