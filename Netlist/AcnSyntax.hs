@@ -41,6 +41,7 @@ module Netlist.AcnSyntax
     , AcnDeclaration (..)
     , AcnBindings
     , SortedDecl (..)
+    , sortedDeclToDecl
     , AcnAlternative
     , CommentOrDirective (..)
     , PortMap (..)
@@ -134,14 +135,24 @@ data AcnComponent
 -- target implementations to account for problem-specific considerations.
 --
 data AcnDeclaration
+    -- |
+    -- The prototypical assignment. Creates a net driven by an expression.
     = Assignment
         !NetDeclarator          -- ^ Created result net.
         !AcnExpression          -- ^ Expression to assign.
+
+    -- |
+    -- Conditional assignment. Creates a net driven by one of many
+    -- possible alternate expressions.
     | CondAssignment
         !NetDeclarator          -- ^ Created result net.
         !AcnExpression          -- ^ Expression to scrutinize.
         !NetType                -- ^ Scrutinee type.
         [AcnAlternative]        -- ^ Alternatives to choose from.
+
+    -- |
+    -- Subcomponent instantiation. Creates an arbitrary number of nets,
+    -- each driven by one of the outputs of the instantiated component.
     | InstDecl
         [NetDeclarator]         -- ^ Created result nets.
         [Attr']                 -- ^ Instance attributes.
@@ -149,12 +160,22 @@ data AcnDeclaration
         !AcnId                  -- ^ Instance name.
         [()]                    -- ^ Compile-time parameters.
         PortMap                 -- ^ I\/O port configuration.
+
+    -- |
+    -- Black box instantiation. Creates an arbitrary number of nets,
+    -- each driven by one of the outputs of some magical primitive.
     | BlackBoxDecl
         !AcnBlackBox            -- ^ Primitive to defer.
         BlackBoxContext         -- ^ Instantiation context.
+
+    -- |
+    -- Annotated declaration.
     | TickDecl
         !CommentOrDirective     -- ^ Annotation.
         AcnDeclaration          -- ^ Declaration to be annotated.
+
+    -- |
+    -- Declaration wrapped in a preprocessor condition.
     | ConditionalDecl
         !Text                   -- ^ Condition text.
         [AcnDeclaration]        -- ^ Body to add on condition.
@@ -193,6 +214,15 @@ data SortedDecl
     = Input  NetDeclarator
     | Logic  AcnDeclaration
     | Output AcnDeclaration
+
+-- |
+-- Get an ACN declaration from a region-sorted declaration/declarator.
+--
+sortedDeclToDecl :: SortedDecl -> Maybe AcnDeclaration
+sortedDeclToDecl = \case
+    Input _  -> Nothing
+    Logic d  -> Just d
+    Output d -> Just d
 
 -- $acnExamples
 -- 
