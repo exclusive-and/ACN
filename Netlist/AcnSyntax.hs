@@ -121,7 +121,7 @@ data AcnComponent
     deriving (Show, Generic, NFData)
 
 -- |
--- ACN declarations unify the central concerns of our CMOS logic
+-- ACN declarations unify the central aspects of our CMOS logic
 -- representation with an eye toward Haskell. In particular, they must:
 --
 --  (1) describe the structure of some hardware process, and
@@ -136,7 +136,7 @@ data AcnComponent
 --
 data AcnDeclaration
     -- |
-    -- The prototypical assignment. Creates a net driven by an expression.
+    -- Prototypical assignment: creates a net driven by an expression.
     = Assignment
         !NetDeclarator          -- ^ Created result net.
         !AcnExpression          -- ^ Expression to assign.
