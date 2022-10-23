@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -49,7 +50,7 @@ import              Control.Lens (Lens', (.=))
 import qualified    Control.Lens as Lens
 import qualified    Control.Monad.State.Lazy as Lazy
 import qualified    Control.Monad.State.Strict as Strict
-import              Data.Function (($), (&))
+import              Data.Function (($), (&), on)
 import              Data.Hashable (Hashable (..))
 import              Data.HashMap.Strict (HashMap)
 import qualified    Data.HashMap.Strict as HashMap
