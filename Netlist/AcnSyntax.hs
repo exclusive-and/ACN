@@ -340,30 +340,49 @@ data PortDirection = In | Out
 -- Continuous logic expressions.
 --
 data AcnExpression
+    -- |
+    -- Fixed or dynamic-sized, typed literals.
     = Literal
         !(Maybe NetType)        -- ^ Literal size and type.
         !Literal                -- ^ Literal contents.
-    | Identifier
-        !AcnId                  -- ^ Reference to a net.
+    
+    -- |
+    -- Variable reference.
+    | Identifier !AcnId
+    
+    -- |
+    -- Construct a datatype from a single fixed constructor index.
     | DataCon
         !NetType                -- ^ Type to be constructed.
         !Int                    -- ^ Index of constructor to use.
         [AcnExpression]         -- ^ Constructor arguments.
+    
+    -- |
+    -- Construct a cartesian datatype, with the constructor selected
+    -- dynamically by an expression.
     | SuperDataCon
         !CartesianType          -- ^ Type to be constructed.
         !AcnExpression          -- ^ Constructor encoding.
         [Maybe AcnExpression]   -- ^ All fields for this type.
+    
+    -- |
+    -- Project a field of a Cartesian datatype (primitive types
+    -- don't have well-defined projections in ACN).
     | Projection
         !AcnExpression          -- ^ Source expression.
-        !CartesianType
-        -- ^ Type of source expression. Must be Cartesian; primitive types
-        -- don't have constructors we can project from.
+        !CartesianType          -- ^ Type of source expression.
         !Int                    -- ^ Constructor to project from.
         !Int                    -- ^ Field to project.
+    
+    -- |
+    -- Slice raw bit representation of a source expression.
     | Slice
         !AcnExpression          -- ^ Source expression.
         !Int                    -- ^ High bit index of range.
         !Int                    -- ^ Low bit index of range.
+    
+    -- |
+    --
     | BlackBoxE
         !AcnBlackBox            -- ^ Primitive to defer.
         BlackBoxContext         -- ^ Calling context.
