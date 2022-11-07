@@ -8,34 +8,31 @@
 
 -- |
 -- Module       : Netlist.AcnSyntax
--- Description  : ACN Hardware Description Language Abstract Syntax
+-- Description  : ACN Language Abstract Syntax
 -- Copyright    : (c) Simon Lovell Bart, 2022
 -- License      : BSD2
 -- Maintainer   : xandgate@gmail.com
 -- Stability    : experimental
 -- 
--- = Assignment-Creates-Net (ACN) Hardware Description Language
+-- = Assignment-Creates-Net (ACN) Language Abstract Syntax
 --
--- ACN is a single static assignment language for algorithmically
--- representing CMOS-style digital logic. Its main application is
--- as an intermediate stage in Haskell-to-HDL compilers: it converts
--- readily to both graph form for Haskell interoperability, and to
--- Verilog/VHDL for FPGA programming.
+-- This module defines the compiler's internal abstract syntax for
+-- representing ACN terms. The terms can be divided into three
+-- categories, where a term in each category is built out of terms
+-- from the one immediately below:
 --
--- The core idea of the language is that each net should have
--- exactly one driver. This idea corresponds well with Haskell,
--- where names are immutably bound to expressions. And conveniently
--- for us, it also corresponds to the notion in CMOS logic that a
--- wire should only be powered and grounded through exactly one CMOS
--- cell. Driving a wire by more than one CMOS cell should be
--- considered an error, as it will result in short circuits if one
--- cell grounds the wire while another cell powers it.
+--  (1) Top-level components;
+--
+--  (2) Judgement-level assignment declarations;
+--
+--  (3) Value-level continuous expressions.
+--
+-- By declaring and assigning nets in a single judgement, the
+-- compiler can automatically determine the properties of every
+-- net (chiefly usage annotations).
 -- 
 module Netlist.AcnSyntax
-    ( -- $acnExamples
-      -- $acnBlackBoxes
-      
-      -- * Netlist Syntax
+    ( -- * Netlist Syntax
       -- ** Declarations
       AcnComponent (..)
     , AcnDeclaration (..)
@@ -121,18 +118,7 @@ data AcnComponent
     deriving (Show, Generic, NFData)
 
 -- |
--- ACN declarations unify the central aspects of our CMOS logic
--- representation with an eye toward Haskell. In particular, they must:
---
---  (1) describe the structure of some hardware process, and
---  (2) create all the nets assigned to by that process.
---
--- Satisfying responsibility (2) has some interesting ramifications for
--- the representation of logic designs. This allows ACN to know a lot
--- about the use of nets. We can easily determine target HDL annotations
--- for net codegen. We may even be able to make more nuanced decisions
--- about the annotations: assessing the advantages of many different
--- target implementations to account for problem-specific considerations.
+-- Judgement-level declarations which create and drive nets.
 --
 data AcnDeclaration
     -- |
@@ -224,92 +210,6 @@ sortedDeclToDecl = \case
     Logic d  -> Just d
     Output d -> Just d
 
--- $acnExamples
--- 
--- = Worked Example
---
--- To properly understand ACN, let's return to Haskell-land for a moment
--- and consider a simple closure:
---
--- @
--- example = \\a b -> let c = a + b in c
--- @
---
--- How would the same closure be represented in ACN? First of all, every
--- closure in normal form corresponds to an ACN component. Components
--- take the same approach for inputs as GHC's STG language does: each
--- input is a special binder that names a slot where we may insert some
--- argument at the closure's call site:
---
--- @
--- let aNet = 'NetDeclaration' Nothing aId ('Signed' 32) Nothing
---     bNet = 'NetDeclaration' Nothing bId ('Signed' 32) Nothing
--- @
---
--- Next, we must represent addition. There are a few ways such a
--- function may be compiled: it could have a primitive or black box form
--- substituted in its place by the HDL codegen. But for the sake of
--- demonstration, we will assume that it's also a closure represented by
--- a component whose top-level binder is @addId@. To use the component
--- in this circuit, we must instantiate it with:
---
--- @
--- let decl = 'InstDecl' [cNet] [] addId addInstanceId []
---                $ 'IndexedPortMap'
---                    [ ('In' , 'Signed' 32, aId)
---                    , ('In' , 'Signed' 32, bId)
---                    , ('Out', 'Signed' 32, cId)
---                    ]
--- @
---
--- Finally, we can populate the contents of the component. Note that the
--- extra list corresponds to any internal logic that we don't wish to
--- output from the component, like binders in a let-expression that don't
--- appear in the body. The fully specified component is:
---
--- @
--- 'AcnComponent' exampleId [aNet, bNet] [] [decl]
--- @
---
--- On the other side, we can generate a Verilog description of this logic.
--- ACN components correspond directly to Verilog modules, so we start
--- immediately with that:
---
--- @
--- module example
--- @
---
--- Where things get interesting is the generation of net declarations.
--- Verilog expects nets to be declared in advance, and also expects them to
--- be annotated with how they're meant to be assigned. ACN doesn't
--- distinguish between continuous and latching assignments the way Verilog
--- does, so there's a trick to this step. What ACN does have is a lot of
--- knowledge about how nets actually get used: since an ACN declaration is
--- responsible for any nets that it assigns to, we can always determine
--- their behaviour by examining the declarations that create them.
--- Specifically, @cNet@ occurs in an instance declaration. Instances will
--- always drive their nets continuously, so we know that it should be
--- declared as:
---
--- @
---     ( input [31:0] a
---     , input [31:0] b
---     , output wire [31:0] c
---     );
--- @
---
--- Normally we'd then use the same trick to declare internal logic nets,
--- and then generate the internal logic itself. This component has no
--- internal logic, so we can skip those steps. After that, we generate
--- the code that assigns to outputs; in this case our instantiation:
---
--- @
---   add addInstance
---     (a, b, c);
---
--- endmodule
--- @
-
 
 type AcnAlternative = (Maybe Literal, AcnExpression)
 
@@ -337,7 +237,7 @@ data PortDirection = In | Out
 
 
 -- |
--- Continuous logic expressions.
+-- Typed, continuous, value-level terms.
 --
 data AcnExpression
     -- |
@@ -428,67 +328,6 @@ data AcnBlackBox
         , boxTokens     :: BlackBox
         }
     deriving Show
-
--- $acnBlackBoxes
--- 
--- = Some Peculiarities and Black Boxes
--- 
--- The ACN approach also applies some restrictions to what we may do.
--- For example, some circuits use tristate logic rather than multiplexers
--- for decisions. In Verilog, we might have something like:
--- 
--- @
--- wire x;
--- assign x = p1 ? v1 : 1'bz;
--- assign x = p2 ? v2 : 1'bz;
--- @
--- 
--- Naively, we might try to implement this with two @'Assignment'@
--- declarations. But we run into a problem right away: since each
--- declaration must create its own result net, there's no way for both
--- assignments to assign to the same net, as in the Verilog code. The only
--- way around the restriction in this case is a particular conditional
--- assignment that does all the possible tri-state assignments within the
--- same block so that they may all use the same result net.
--- 
--- These edge cases are where @'AcnBlackBox'@ comes in handy. If ACN
--- doesn't represent the exact output we want, we can write a primitive
--- in the target HDL. The primitive is treated as a black box, and can
--- be substituted by codegen with the appropriate context. As long as we
--- still know the declarations of nets exposed by the black box, they
--- can still be used in a circuit as we would any other declaration.
--- 
--- Going back to the example circuit, we could imagine addition not as a
--- component to be instantiated, but as a primitive. That would change
--- the ACN declaration to look something like:
--- 
--- @
--- 'Assignment' cNet
---     $ 'BlackBoxE'
---         (addBB :: 'AcnBlackBox')
---         ('BlackBoxContext' []
---             [ Left ('Identifier' aId, 'Signed' 32)
---             , Left ('Identifier' bId, 'Signed' 32)
---             ])
--- @
--- 
--- From an appropriately written primitive for @addBB@, the resultant
--- Verilog could look like:
--- 
--- @
--- assign c = a + b;
--- @
--- 
--- Of course, the reverse process of black box insertion is complicated.
--- It puts ACN as a language in an interesting position not far off from
--- Haskell itself. Every C program has an equivalent in Haskell. But it's
--- not always possible to directly compile those C programs to their
--- Haskell equivalents. Similarly, every Verilog or VHDL description can
--- be written in ACN. But while writing a Haskell-to-ACN-to-Verilog
--- compiler is tractable, writing a Verilog-to-ACN-to-Haskell compiler
--- is likely very hard. So while ACN is useful algorithmically as an HDL,
--- using it in one direction might require some extra steps (perhaps a
--- Verilog to LLHD to ACN approach would work for this purpose).
     
 -- |
 -- The substitution context needed to properly instantiate a black box
