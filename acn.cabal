@@ -1,0 +1,68 @@
+cabal-version:      2.4
+name:               acn
+version:            0.1.0.0
+author:             Simon Lovell Bart
+maintainer:         ???
+license:            BSD-2-Clause
+license-file:       LICENSE
+extra-source-files:
+  CHANGELOG.md
+  README.md
+
+library
+  build-depends:
+    , base                  >=4.14 && <5
+    , containers            >=0.6.6
+    , deepseq               >=1.4
+    , hashable              >=1.4.1
+    , lens                  >=5.2
+    , mtl                   >=2.2.2
+    , prettyprinter         >=1.7.1
+    , unordered-containers  >=0.2.19
+    , template-haskell
+    , text                  >=2.0
+
+  default-extensions:
+    BangPatterns
+    ConstraintKinds
+    DataKinds
+    DeriveDataTypeable
+    DeriveFoldable
+    DeriveFunctor
+    DeriveGeneric
+    DeriveLift
+    DeriveTraversable
+    DerivingStrategies
+    EmptyCase
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    MultiParamTypeClasses
+    MultiWayIf
+    NamedFieldPuns
+    OverloadedStrings
+    PatternSynonyms
+    PolyKinds
+    QuasiQuotes
+    RecordWildCards
+    ScopedTypeVariables
+    StandaloneDeriving
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    ViewPatterns
+
+  default-language:   Haskell2010
+  hs-source-dirs:     src
+  exposed-modules:
+    Netlist.AcnIds
+    Netlist.AcnPrimitives
+    Netlist.AcnSyntax
+    Netlist.AcnToVerilog
+    Netlist.CoreToAcn
+    Netlist.Debug
+    Netlist.Test
+    CeilingLog
