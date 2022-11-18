@@ -1,11 +1,6 @@
 
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 
 -- |
 -- Module       : Netlist.AcnIds
@@ -427,4 +422,3 @@ suffix nm affix = do
 -- Should we trace the origins of identifiers?
 -- 
 originIsOn = True
-

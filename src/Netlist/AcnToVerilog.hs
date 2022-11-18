@@ -1,12 +1,6 @@
 
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 
 module Netlist.AcnToVerilog
     ( -- * Backend Monad
@@ -523,4 +517,3 @@ bitChar = \case
 int = pretty
 integer = pretty
 string = pretty
-

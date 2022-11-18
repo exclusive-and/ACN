@@ -1,6 +1,5 @@
 
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Netlist.AcnPrimitives
     ( HDL (..)
@@ -24,5 +23,3 @@ data Element = Element
 
 data BlackBox = BlackBox
     deriving Show
-
-

@@ -1,7 +1,5 @@
 
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module Netlist.Test where
 
@@ -91,4 +89,3 @@ acnTest = flip evalState (VerilogState emptyAcnSet) $ acnToVerilogComponent =<< 
 main :: IO ()
 main = do
     print acnTest
-
