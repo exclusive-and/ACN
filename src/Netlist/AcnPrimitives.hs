@@ -1,6 +1,5 @@
 
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Netlist.AcnPrimitives
     ( HDL (..)

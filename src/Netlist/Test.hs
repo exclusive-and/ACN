@@ -1,7 +1,5 @@
 
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module Netlist.Test where
 
@@ -12,17 +10,6 @@ import Netlist.AcnToVerilog
 import Control.Monad.State
 import GHC.Stack
 
-
-newtype NetlistMonad a
-    = NetlistMonad { runNetlistM :: State AcnIdSet a }
-    deriving (Functor, Applicative, Monad)
-
-instance AcnIdSetMonad NetlistMonad where
-    acnIdSetM = NetlistMonad . acnIdSetM
-
-instance AcnNameMonad NetlistMonad where
-    acnNameNormalizerM =
-        NetlistMonad . pure $ \nm -> AcnName nm nm [] Basic emptyCallStack
 
 acnTest :: Doc
 acnTest = flip evalState (VerilogState emptyAcnSet) $ acnToVerilogComponent =<< do
@@ -46,8 +33,8 @@ acnTest = flip evalState (VerilogState emptyAcnSet) $ acnToVerilogComponent =<< 
     logic2  <- newAcnName "logic"
 
     let
-      constr1 = NetConstr (verbatimId# "cons1") [1]
-      constr2 = NetConstr (verbatimId# "cons2") [0]
+      constr1 = NetConstructor (verbatimId# "cons1") [1]
+      constr2 = NetConstructor (verbatimId# "cons2") [0]
 
       fields = [NetField 14 23 (Signed 10), NetField 0 13 (Signed 14)]
 
