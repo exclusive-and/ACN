@@ -1,10 +1,5 @@
 
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DeriveLift #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 -- |
 -- Module       : Netlist.AcnSyntax
@@ -67,18 +62,10 @@ module Netlist.AcnSyntax
 
       -- ** Cartesian Types
     , CartesianType (..)
-    , NetConstr (..)
+    , NetConstructor (..)
     , NetField (..)
     , cartesianSize
     , constructorSize
-
-      -- ** Clock Domains
-    , Domain (..)
-    , DomainName
-    , ActiveEdge (..)
-    , ResetKind (..)
-    , ResetPolarity (..)
-    , InitBehaviour (..)  
     )
   where
 
@@ -86,19 +73,12 @@ import              Netlist.AcnIds
 import              Netlist.AcnPrimitives
 
 import              Control.DeepSeq
-import              Data.Bool
-import              Data.Eq
-import              Data.Map (Map (..))
-import qualified    Data.Kind as Kind
-import              Data.List
+import              Data.Map (Map)
 import              Data.Maybe
-import              Data.Text (Text (..))
-import qualified    Data.Text as Text
+import              Data.Text (Text)
 import              Data.Typeable (Typeable)
 import              GHC.Generics
-import              GHC.Int
 import              GHC.Stack
-import              Text.Show (Show (..))
 
 import              Language.Haskell.TH.Syntax (Lift)
 
@@ -445,6 +425,7 @@ netTypeSize = \case
     Signed n            -> n
     Unsigned n          -> n
     Cartesian cty       -> cartesianSize cty
+    MemBlob m n         -> m * n
     Vector n ty         -> n * netTypeSize ty
     RTree d ty          -> (2 ^ d) * netTypeSize ty
     BiDirectional In ty -> netTypeSize ty
@@ -509,13 +490,13 @@ netTypeSize = \case
 data CartesianType
     = CartesianType
         { typeName      :: !AcnId
-        , constructors  :: [NetConstr]
+        , constructors  :: [NetConstructor]
         , fields        :: [NetField]
         }
     deriving (Show, Generic, NFData)
 
-data NetConstr
-    = NetConstr
+data NetConstructor
+    = NetConstructor
         { consName      :: !AcnId
         , fieldIndices  :: [Int]
         }

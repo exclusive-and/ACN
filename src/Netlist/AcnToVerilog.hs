@@ -1,10 +1,5 @@
 
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
@@ -16,11 +11,11 @@ module Netlist.AcnToVerilog
       -- * ACN Component Translation
     , acnToVerilogComponent
       -- ** ACN Net Declaration Pass
-    , acnToVerilogNetDecl
-    , acnToVerilogNetDecls
-    , nvNetDecl
+    , inferNetDecl
+    , genNetDecls
+    , convDeclarator
       -- *** Type Conversion
-    , netToVerilogType
+    , convNetType
       -- * ACN Declaration Translation
     , acnToVerilogDecl
     , acnToVerilogDecls
@@ -33,32 +28,15 @@ import              Netlist.AcnSyntax
 import              Netlist.AcnIds
 
 import              Control.Applicative
-import              Control.DeepSeq
 import              Control.Lens (makeLenses)
-import              Control.Monad
 import              Control.Monad.State (State)
-import              Control.Monad.State.Class
-import              Data.Bool
-import              Data.Eq
-import              Data.Function
-import              Data.Functor
-import              Data.Functor.Identity
-import              Data.IntMap (IntMap (..))
-import qualified    Data.IntMap as IntMap
-import              Data.List
 import              Data.Maybe
 import              Data.Monoid (Ap (Ap))
-import              Data.Text (Text (..))
 import              Data.Text.Lazy (pack)
-import              GHC.Generics
-import              GHC.Int
 import              GHC.Stack
-import              Text.Show (Show (..))
 
 import              Prettyprinter hiding (Doc)
 import qualified    Prettyprinter as PP
-
-import Debug.Trace
 
 
 type Doc = PP.Doc ()
@@ -94,7 +72,7 @@ acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
     let header = "module" <+> nameText <> line
               <> indent 4 portsText <> semi <> line
     
-    logicNetsText   <- acnToVerilogNetDecls True logic
+    logicNetsText   <- genNetDecls True logic
     logicDeclsText  <- acnToVerilogDecls logic
     outDeclsText    <- acnToVerilogDecls outputs
     
@@ -132,11 +110,11 @@ genModuleIOList inputNets outputNets = do
     return $ inputText <> outputText
   where
     declareInput :: NetDeclarator -> VerilogM Doc
-    declareInput = fmap ("input" <+>) . nvNetDecl False
+    declareInput = fmap ("input" <+>) . convDeclarator False
     
     declareOutput :: AcnDeclaration -> VerilogM Doc
     declareOutput decl = do
-        netDeclText <- acnToVerilogNetDecl False decl
+        netDeclText <- inferNetDecl False decl
         return $ "output" <+> netDeclText
 
 
@@ -157,31 +135,29 @@ genModuleIOList inputNets outputNets = do
 --
 -- @'TickDecl'@ and @'ConditionalDecl'@ are transparent.
 --
-acnToVerilogNetDecl
+inferNetDecl
     :: Bool             -- ^ Add semicolons to the ends of declarations?
     -> AcnDeclaration   -- ^ ACN declaration to extract net(s) from.
     -> VerilogM Doc
-acnToVerilogNetDecl addSemi = \case
-    Assignment net _
-        -> nvWireDecl net
-    CondAssignment net _ _ alts
-        -> nvRegDecl net
-    InstDecl nets _ _ _ _ _
-        -> fmap vcat . mapM nvWireDecl $ nets
-    TickDecl _ decl
-        -> acnToVerilogNetDecl addSemi decl
-    ConditionalDecl _ decls
-        -> acnToVerilogNetDecls addSemi decls
-  where
-    nvWireDecl = fmap ("wire" <+>) . nvNetDecl addSemi
-    nvRegDecl = fmap ("reg" <+>) . nvNetDecl addSemi
+inferNetDecl addSemi = go where
+    go :: AcnDeclaration -> VerilogM Doc
+    go = \case
+        Assignment net _         -> wireDecl net
+        CondAssignment net _ _ _ -> regDecl net
+        
+        InstDecl nets _ _ _ _ _
+            -> fmap vcat . mapM wireDecl $ nets
+            
+        TickDecl _ decl -> go decl
+        
+        ConditionalDecl _ decls
+            -> fmap vcat . mapM go $ decls
+      
+    wireDecl = fmap ("wire" <+>) . convDeclarator addSemi
+    regDecl  = fmap ("reg" <+>) . convDeclarator addSemi
 
-acnToVerilogNetDecls
-    :: Bool
-    -> [AcnDeclaration]
-    -> VerilogM Doc
-acnToVerilogNetDecls addSemi =
-    fmap vcat . mapM (acnToVerilogNetDecl addSemi)
+genNetDecls :: Bool -> [AcnDeclaration] -> VerilogM Doc
+genNetDecls addSemi = fmap vcat . mapM (inferNetDecl addSemi)
 
 -- |
 -- Actually convert a net into a Verilog declaration. As explained in
@@ -193,12 +169,12 @@ acnToVerilogNetDecls addSemi =
 -- >>> nvNetDecl True net
 -- [netTypeSize ty:0] name = initVal; // comment
 --
-nvNetDecl
+convDeclarator
     :: Bool             -- ^ Add a semicolon to the end of the declaration?
     -> NetDeclarator    -- ^ Net to declare.
     -> VerilogM Doc
-nvNetDecl addSemi (NetDeclarator commentM name ty initValM) = do
-    tyText   <- netToVerilogType ty
+convDeclarator addSemi (NetDeclarator commentM name ty initValM) = do
+    tyText   <- convNetType ty
     nameText <- prettyId name
     
     let toInitializer e = do
@@ -216,10 +192,10 @@ nvNetDecl addSemi (NetDeclarator commentM name ty initValM) = do
 -- |
 -- Convert representable netlist types to Verilog bit vectors.
 --
-netToVerilogType :: NetType -> VerilogM Doc
-netToVerilogType netTy = case netTy of
+convNetType :: NetType -> VerilogM Doc
+convNetType netTy = case netTy of
     Annotated _ netTy'
-        -> netToVerilogType netTy'
+        -> convNetType netTy'
 
     Clock _     -> return emptyDoc
     Reset _     -> return emptyDoc
@@ -246,6 +222,17 @@ acnToVerilogDecl (Assignment dest expr) = do
     return $ "assign" <+> nameText <+> equals
                       <+> exprText <> semi
 
+--
+-- @
+-- always @(*) begin
+--   case (scrut)
+--     pat1: alt1;
+--     pat2: alt2;
+--     ... alts...
+--   endcase
+-- end
+-- @
+--
 acnToVerilogDecl (CondAssignment dest scrut scrutTy alts) = do
     nameText <- prettyId $ netName dest
     
@@ -276,6 +263,12 @@ acnToVerilogDecl (CondAssignment dest scrut scrutTy alts) = do
           <> indent 2 switch <> line
           <> "end"
 
+--
+-- @
+-- componentName instanceName
+--   (.port1 (arg1), .port2 (arg2), ... ports...);
+-- @
+--
 acnToVerilogDecl (InstDecl _ attrs compName instName params ports) = do
     compNameText <- prettyId compName
     instNameText <- prettyId instName
@@ -322,29 +315,6 @@ acnToVerilogDecl _ = error "Not yet implemented"
 acnToVerilogDecls :: [AcnDeclaration] -> VerilogM Doc
 acnToVerilogDecls = fmap vcat . mapM (fmap (<> line) . acnToVerilogDecl)
 
--- |
--- Generate always-comb multiplexing case block switching between @alts@.
---
--- @
--- always @(*) begin
---   case (scrut)
---     pat1: alt1;
---     pat2: alt2;
---     ... alts...
---   endcase
--- end
--- @
---
-
--- |
--- Generate and connect component instances according to the port map
--- wiring specification.
---
--- @
--- componentName instanceName
---   (.port1 (arg1), .port2 (arg2), ... ports...);
--- @
---
 
 nvBlackBoxDecl :: AcnBlackBox -> BlackBoxContext -> VerilogM Doc
 nvBlackBoxDecl blackbox context = undefined

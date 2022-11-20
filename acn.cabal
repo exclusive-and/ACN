@@ -1,0 +1,96 @@
+Cabal-version:        2.2
+Name:                 acn
+Version:              0.0.0
+Synopsis:             Assignment-Creates-Net Abstract HDL
+License:              BSD-2-Clause
+License-file:         LICENSE
+Author:               Simon Lovell Bart
+Maintainer:           Simon Lovell Bart
+Category:             Hardware
+Build-type:           Simple
+
+flag debug
+   description:
+     Build a debug compiler
+   default: False
+   manual: True
+
+common common-options
+  default-language:   Haskell2010
+  default-extensions: BangPatterns
+                      BinaryLiterals
+                      DataKinds
+                      DefaultSignatures
+                      DeriveDataTypeable
+                      DeriveFoldable
+                      DeriveFunctor
+                      DeriveGeneric
+                      DeriveLift
+                      DeriveTraversable
+                      DerivingStrategies
+                      FlexibleContexts
+                      FlexibleInstances
+                      InstanceSigs
+                      KindSignatures
+                      LambdaCase
+                      NoStarIsType
+                      OverloadedStrings
+                      ScopedTypeVariables
+                      StandaloneDeriving
+                      TupleSections
+                      TypeApplications
+                      TypeOperators
+                      ViewPatterns
+
+Library
+  import:             common-options
+  HS-Source-Dirs:     src
+
+  ghc-options:        -Wall -Wcompat -Wno-missing-signatures
+  CPP-Options:        -DCABAL
+
+  other-extensions:   CPP
+                      DeriveAnyClass
+                      GeneralizedNewtypeDeriving
+                      MultiParamTypeClasses
+                      RankNTypes
+                      RecordWildCards
+                      TemplateHaskell
+
+  Build-depends:      base                    >= 4.11     && < 5,
+                      clash-lib               ^>= 1.6.0,
+                      containers              >= 0.5.0.0  && < 0.7,
+                      deepseq                 >= 1.3.0.2  && < 1.5,
+                      exceptions              >= 0.8.3    && < 0.11.0,
+                      ghc                     >= 8.6.0    && < 9.1,
+                      ghc-boot-th,
+                      hashable                >= 1.2.1.0  && < 1.5,
+                      haskell-src-meta        >= 0.8      && < 0.9,
+                      string-interpolate      ^>= 0.3,
+                      lens                    >= 4.10     && < 5.2.0,
+                      mtl                     >= 2.1.2    && < 2.3,
+                      ordered-containers      >= 0.2      && < 0.3,
+                      prettyprinter           >= 1.2.0.1  && < 1.8,
+                      pretty-show             >= 1.9      && < 2.0,
+                      primitive               >= 0.5.0.1  && < 1.0,
+                      template-haskell        >= 2.8.0.0  && < 2.18,
+                      text                    >= 1.2.2    && < 2.1,
+                      unordered-containers    >= 0.2.3.3  && < 0.3,
+
+  if impl(ghc >= 9.0.0)
+    build-depends:     ghc-bignum >=1.0 && <1.3
+  else
+    build-depends:     integer-gmp >=1.0 && <1.1
+
+
+  Exposed-modules:    Netlist.AcnIds
+                      Netlist.AcnPrimitives
+                      Netlist.AcnSyntax
+                      Netlist.AcnToVerilog
+                      Netlist.CoreToAcn
+                      Netlist.Test
+
+  Other-Modules:      CeilingLog
+
+  if flag(debug)
+    cpp-options:      -DDEBUG
