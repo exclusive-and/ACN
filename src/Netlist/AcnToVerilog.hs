@@ -147,10 +147,8 @@ inferNetDecl addSemi = go where
         
         InstDecl nets _ _ _ _ _
             -> fmap vcat . mapM wireDecl $ nets
-            
-        TickDecl _ decl -> go decl
-        
-        ConditionalDecl _ decls
+       
+        AnnotatedDecl _ decls
             -> fmap vcat . mapM go $ decls
       
     wireDecl = fmap ("wire" <+>) . convDeclarator addSemi
@@ -239,7 +237,7 @@ acnToVerilogDecl (CondAssignment dest scrut scrutTy alts) = do
     let goCond :: AcnAlternative -> VerilogM Doc
     
         -- Alternative with literal: @pat: dest = alt;@.
-        goCond (Just c, e) = do
+        goCond (Dependent c e)  = do
             -- TODO: proper condition literal reprs
             cText <- verilogLiteral Nothing c
             eText <- acnToVerilogExpr False e
@@ -247,7 +245,7 @@ acnToVerilogDecl (CondAssignment dest scrut scrutTy alts) = do
                  <+> equals <+> eText <> semi
         
         -- Default alternative: @default: dest = altExpr;@.
-        goCond (Nothing, e) = do
+        goCond (Default e) = do
             eText <- acnToVerilogExpr False e
             return $ "default:" <+> nameText
                  <+> equals <+> eText <> semi
@@ -297,18 +295,21 @@ acnToVerilogDecl (InstDecl _ attrs compName instName params ports) = do
                   <+> instNameText <> line
                    <> ports' <> semi
 
-acnToVerilogDecl (TickDecl ann decl) = do
-    let annText = case ann of
-            Comment c -> comment "//" c
-            Directive d -> pretty d <> ";"
-    declText <- acnToVerilogDecl decl
-    return $ annText <> line <> declText
-
-acnToVerilogDecl (ConditionalDecl cond decls) = do
+acnToVerilogDecl (AnnotatedDecl ann decls) = do
     decls' <- acnToVerilogDecls decls
-    return $ "`ifdef" <+> pretty cond <> line <>
-             indent 2 decls' <> line <>
-             "`endif"
+    
+    return $ case ann of
+        Comment commentText
+            -> comment "//" commentText <> line
+            <> decls'
+        Directive directive
+            -> pretty directive <> semi <> line
+            <> decls'
+
+        Condition cond
+            -> "`ifdef" <+> pretty cond <> line
+            <> indent 2 decls' <> line
+            <> "`endif"
 
 acnToVerilogDecl _ = error "Not yet implemented"
 

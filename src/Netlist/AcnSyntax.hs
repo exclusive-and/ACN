@@ -31,11 +31,11 @@ module Netlist.AcnSyntax
       -- ** Declarations
       AcnComponent (..)
     , AcnDeclaration (..)
+    , AcnAnnotation (..)
     , AcnBindings
     , SortedDecl (..)
     , sortedDeclToDecl
-    , AcnAlternative
-    , CommentOrDirective (..)
+    , AcnAlternative (..)
     , PortMap (..)
     , PortDirection (..)
 
@@ -135,21 +135,25 @@ data AcnDeclaration
         BlackBoxContext         -- ^ Instantiation context.
 
     -- |
-    -- Annotated declaration.
-    | TickDecl
-        !CommentOrDirective     -- ^ Annotation.
-        AcnDeclaration          -- ^ Declaration to be annotated.
-
-    -- |
-    -- Declaration wrapped in a preprocessor condition.
-    | ConditionalDecl
-        !Text                   -- ^ Condition text.
-        [AcnDeclaration]        -- ^ Body to add on condition.
+    -- Annotated declaration(s).
+    | AnnotatedDecl
+        !AcnAnnotation          -- ^ Annotation.
+        [AcnDeclaration]        -- ^ Declaration(s) to be annotated.
     deriving Show
 
 instance NFData AcnDeclaration where
     rnf x = x `seq` ()
 
+-- |
+-- Annotations that can be inserted in or around declarations to supplement
+-- them in synthesis.
+-- 
+data AcnAnnotation
+    = Comment   Text -- ^ Comment.
+    | Directive Text -- ^ Synthesizer directive.
+    | Condition Text -- ^ Synthesizer preprocessor condition.
+    deriving Show
+ 
 -- |
 -- An ACN net declarator contains the name and type information of a net.
 -- Usage annotations should be decided by examining the declarations that
@@ -190,14 +194,22 @@ sortedDeclToDecl = \case
     Logic d  -> Just d
     Output d -> Just d
 
+-- |
+-- One branch of a conditional assignment declaration.
+--
+data AcnAlternative
+    -- |
+    -- Default branch.
+    = Default
+        AcnExpression   -- ^ Value to assign by default.
 
-type AcnAlternative = (Maybe Literal, AcnExpression)
-
-data CommentOrDirective
-    = Comment   Text
-    | Directive Text
+    -- |
+    -- Branch dependent on a condition.
+    | Dependent
+        Literal         -- ^ Condition.
+        AcnExpression   -- ^ Value to assign.
     deriving Show
-    
+   
 -- |
 -- Map expressions to input or output nets of an ACN component.
 --
