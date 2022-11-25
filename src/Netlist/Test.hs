@@ -62,9 +62,9 @@ acnTest = flip evalState (VerilogState emptyAcnSet) $ acnToVerilogComponent =<< 
       resNet = NetDeclarator Nothing resId (BitVector 24) Nothing
 
       resA = CondAssignment resNet (Identifier inputId) (BitVector 32)
-               [ (Just $ NumLit 123, Identifier logic1)
-               , (Just $ NumLit 456, Slice (Identifier logic2) 23 14)
-               , (Nothing, Literal Nothing $ NumLit 69)
+               [ Dependent (NumLit 123) (Identifier logic1)
+               , Dependent (NumLit 456) (Slice (Identifier logic2) 23 14)
+               , Default (Literal Nothing $ NumLit 69)
                ]
 
     let
