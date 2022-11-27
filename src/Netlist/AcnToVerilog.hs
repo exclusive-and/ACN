@@ -147,7 +147,7 @@ inferNetDecl addSemi = go where
         
         InstDecl nets _ _ _ _ _
             -> fmap vcat . mapM wireDecl $ nets
-       
+            
         AnnotatedDecl _ decls
             -> fmap vcat . mapM go $ decls
       
