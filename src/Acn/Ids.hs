@@ -3,8 +3,8 @@
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
--- |
 -----------------------------------------------------------
+-- |
 -- Module       : Acn.Ids
 -- Description  : Language Agnostic Implementation of ACN Identifiers.
 -----------------------------------------------------------

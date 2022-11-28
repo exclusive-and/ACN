@@ -1,8 +1,8 @@
 
 {-# LANGUAGE DeriveAnyClass #-}
 
--- |
 -----------------------------------------------------------
+-- |
 -- Module       : Acn.Primitives
 -- Description  : HDL Components Considered Primitive in ACN.
 -----------------------------------------------------------
