@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
-module Netlist.AcnToVerilog
+module Compilers.AcnToVerilog
     ( -- * Backend Monad
       VerilogState (..)
     , VerilogM
@@ -24,8 +24,7 @@ module Netlist.AcnToVerilog
     )
   where
 
-import              Netlist.AcnSyntax
-import              Netlist.AcnIds
+import              Acn
 
 import              Control.Applicative
 import              Control.Lens (makeLenses)
@@ -52,19 +51,19 @@ instance HasAcnIdSet VerilogState where
 
 type VerilogM = State VerilogState
 
-instance AcnNameMonad (State VerilogState) where
-    acnNameNormalizerM = pure $ \nm -> AcnName nm nm [] Basic emptyCallStack
+instance NameMonad (State VerilogState) where
+    nameNormalizerM = pure $ \nm -> Name nm nm [] Basic emptyCallStack
 
 
-prettyId :: AcnId -> VerilogM Doc
+prettyId :: Id -> VerilogM Doc
 prettyId acnId =
-    pretty . acnIdToText# acnId <$> acnIdSetM id
+    pretty . idToText# acnId <$> idSetM id
 
 -- |
 -- Converts an ACN component directly into a Verilog module.
 --
-acnToVerilogComponent :: AcnComponent -> VerilogM Doc
-acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
+acnToVerilogComponent :: Component -> VerilogM Doc
+acnToVerilogComponent (Component name inputs logic outputs) = do
     portsText <- genModuleIOList inputs outputs
 
     nameText <- prettyId name
@@ -73,8 +72,8 @@ acnToVerilogComponent (AcnComponent name inputs logic outputs) = do
               <> indent 4 portsText <> semi <> line
     
     logicNetsText   <- genNetDecls True logic
-    logicDeclsText  <- acnToVerilogDecls logic
-    outDeclsText    <- acnToVerilogDecls outputs
+    logicDeclsText  <- convAssignments logic
+    outDeclsText    <- convAssignments outputs
     
     let body = logicNetsText <> line <> line
              <> logicDeclsText <> line <> outDeclsText
