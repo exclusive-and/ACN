@@ -1,6 +1,7 @@
 
 {-# LANGUAGE DeriveAnyClass #-}
 
+---------------------------------------------------------------------
 -- |
 -- Module       : Acn.Syntax
 -- Description  : ACN Language Abstract Syntax
@@ -8,7 +9,6 @@
 -- License      : BSD2
 -- Maintainer   : xandgate@gmail.com
 -- Stability    : experimental
--- 
 --
 -- = Assignment-Creates-Net (ACN) Language Abstract Syntax
 --
@@ -26,6 +26,7 @@
 -- By declaring and assigning nets in a single judgement, the
 -- compiler can automatically determine the properties of every
 -- net (chiefly usage annotations).
+---------------------------------------------------------------------
 -- 
 module Acn.Syntax
     ( -- * Netlist Term Syntax
@@ -43,7 +44,7 @@ module Acn.Syntax
     , VerilogBit (..)
 
       -- ** Net Declarators
-    , NetDeclarator (..) 
+    , Declarator (..)
 
       -- * Black Boxes
     , BlackBox (..)
@@ -93,10 +94,10 @@ import              CeilingLog
 --
 data Component
     = Component
-        { componentName :: !Acn.Id          -- ^ Name of the component.
-        , inputs        :: [NetDeclarator]  -- ^ Input ports.
-        , logic         :: [Assignment]     -- ^ Internal logic.
-        , outputs       :: [Assignment]     -- ^ Output ports\/logic.
+        { componentName :: !Acn.Id      -- ^ Name of the component.
+        , inputs        :: [Declarator] -- ^ Input ports.
+        , logic         :: [Assignment] -- ^ Internal logic.
+        , outputs       :: [Assignment] -- ^ Output ports\/logic.
         }
     deriving (Show, Generic, NFData)
 
@@ -107,41 +108,41 @@ data Assignment
     -- |
     -- Prototypical assignment: creates a net driven by an expression.
     = Assignment
-        !NetDeclarator          -- ^ Created result net.
-        !Expression             -- ^ Expression to assign.
+        !Declarator     -- ^ Created result net.
+        !Expression     -- ^ Expression to assign.
 
     -- |
     -- Conditional assignment. Creates a net driven by one of many
     -- possible alternate expressions.
     | CondAssignment
-        !NetDeclarator          -- ^ Created result net.
-        !Expression             -- ^ Expression to scrutinize.
-        !NetType                -- ^ Scrutinee type.
-        [CaseAlt]               -- ^ Alternatives to choose from.
+        !Declarator     -- ^ Created result net.
+        !Expression     -- ^ Expression to scrutinize.
+        !NetType        -- ^ Scrutinee type.
+        [CaseAlt]       -- ^ Alternatives to choose from.
 
     -- |
     -- Subcomponent instantiation. Creates an arbitrary number of nets,
     -- each driven by one of the outputs of the instantiated component.
-    | InstAssignment
-        [NetDeclarator]         -- ^ Created result nets.
-        [Attr']                 -- ^ Instance attributes.
-        !Acn.Id                 -- ^ Component name.
-        !Acn.Id                 -- ^ Instance name.
-        [()]                    -- ^ Compile-time parameters.
-        PortMap                 -- ^ I\/O port configuration.
+    | InstDecl
+        [Declarator]    -- ^ Created result nets.
+        [Attr']         -- ^ Instance attributes.
+        !Acn.Id         -- ^ Component name.
+        !Acn.Id         -- ^ Instance name.
+        [()]            -- ^ Compile-time parameters.
+        PortMap         -- ^ I\/O port configuration.
 
     -- |
     -- Black box instantiation. Creates an arbitrary number of nets,
     -- each driven by one of the outputs of some magical primitive.
     | BlackBoxDecl
-        !BlackBox               -- ^ Primitive to defer.
-        BlackBoxContext         -- ^ Instantiation context.
+        !BlackBox       -- ^ Primitive to defer.
+        BlackBoxContext -- ^ Instantiation context.
 
     -- |
     -- Annotated declaration(s).
     | AnnotatedDecl
-        !Annotation             -- ^ Annotation.
-        [Assignment]            -- ^ Declaration(s) to be annotated.
+        !Annotation     -- ^ Annotation.
+        [Assignment]    -- ^ Declaration(s) to be annotated.
     deriving Show
 
 instance NFData Assignment where
@@ -152,9 +153,9 @@ instance NFData Assignment where
 -- them in synthesis.
 -- 
 data Annotation
-    = Comment   Text -- ^ Comment.
-    | Directive Text -- ^ Synthesizer directive.
-    | Condition Text -- ^ Synthesizer preprocessor condition.
+    = Comment   Text    -- ^ Comment.
+    | Directive Text    -- ^ Synthesizer directive.
+    | Condition Text    -- ^ Synthesizer preprocessor condition.
     deriving Show
  
 -- |
@@ -162,12 +163,12 @@ data Annotation
 -- Usage annotations should be decided by examining the declarations that
 -- create the nets.
 --
-data NetDeclarator
-    = NetDeclarator
-        { netComment    :: !(Maybe Text)        -- ^ Optional comment.
-        , netName       :: !Acn.Id              -- ^ Name of the net.
-        , netType       :: !NetType             -- ^ Net's representable type.
-        , initVal       :: Maybe Expression     -- ^ Optional initial value.
+data Declarator
+    = Declarator
+        { netComment    :: !(Maybe Text)    -- ^ Optional comment.
+        , netName       :: !Acn.Id          -- ^ Name of the net.
+        , netType       :: !NetType         -- ^ Net's representable type.
+        , initVal       :: Maybe Expression -- ^ Optional initial value.
         }
     deriving (Show, Generic, NFData)
 
@@ -212,8 +213,8 @@ data Expression
     -- |
     -- Fixed or dynamic-sized, typed literals.
     = Literal
-        !(Maybe NetType)        -- ^ Literal size and type.
-        !Literal                -- ^ Literal contents.
+        !(Maybe NetType)    -- ^ Literal size and type.
+        !Literal            -- ^ Literal contents.
     
     -- |
     -- Variable reference.
@@ -222,40 +223,40 @@ data Expression
     -- |
     -- Construct a datatype from a single fixed constructor index.
     | DataCon
-        !NetType                -- ^ Type to be constructed.
-        !Int                    -- ^ Index of constructor to use.
-        [Expression]            -- ^ Constructor arguments.
+        !NetType            -- ^ Type to be constructed.
+        !Int                -- ^ Index of constructor to use.
+        [Expression]        -- ^ Constructor arguments.
     
     -- |
     -- Construct a cartesian datatype, with the constructor selected
     -- dynamically by an expression.
     | SuperDataCon
-        !CartesianType          -- ^ Type to be constructed.
-        !Expression             -- ^ Constructor encoding.
-        [Maybe Expression]      -- ^ All fields for this type.
+        !CartesianType      -- ^ Type to be constructed.
+        !Expression         -- ^ Constructor encoding.
+        [Maybe Expression]  -- ^ All fields for this type.
     
     -- |
     -- Project a field of a Cartesian datatype (primitive types
     -- don't have well-defined projections in ACN).
     | Projection
-        !Expression             -- ^ Source expression.
-        !CartesianType          -- ^ Type of source expression.
-        !Int                    -- ^ Constructor to project from.
-        !Int                    -- ^ Field to project.
+        !Expression         -- ^ Source expression.
+        !CartesianType      -- ^ Type of source expression.
+        !Int                -- ^ Constructor to project from.
+        !Int                -- ^ Field to project.
     
     -- |
     -- Slice raw bit representation of a source expression.
     | Slice
-        !Expression             -- ^ Source expression.
-        !Int                    -- ^ High bit index of range.
-        !Int                    -- ^ Low bit index of range.
+        !Expression         -- ^ Source expression.
+        !Int                -- ^ High bit index of range.
+        !Int                -- ^ Low bit index of range.
     
     -- |
     --
     | BlackBoxE
-        !BlackBox               -- ^ Primitive to defer.
-        BlackBoxContext         -- ^ Calling context.
-        !Bool                   -- ^ Should enclose in parentheses?
+        !BlackBox           -- ^ Primitive to defer.
+        BlackBoxContext     -- ^ Calling context.
+        !Bool               -- ^ Should enclose in parentheses?
     deriving Show
 
 instance NFData Expression where
@@ -306,7 +307,7 @@ data BlackBox
 --
 data BlackBoxContext
     = BlackBoxContext
-        { boxTargets    :: [NetDeclarator]
+        { boxTargets    :: [Declarator]
         -- ^ Result declarations.
         , boxInputs     :: [BlackBoxArg]
         -- ^ Black box arguments.
@@ -529,7 +530,7 @@ type AcnBindings = Map Acn.Id SortedDecl
 -- as some optimizations are only applicable to certain regions.
 --
 data SortedDecl
-    = Input  NetDeclarator
+    = Input  Declarator
     | Logic  Assignment
     | Output Assignment
 

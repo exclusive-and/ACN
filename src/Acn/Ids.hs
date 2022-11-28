@@ -4,8 +4,10 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 
 -- |
+---------------------------------------------------------------------
 -- Module       : Acn.Ids
 -- Description  : Language Agnostic Implementation of ACN Identifiers.
+---------------------------------------------------------------------
 -- 
 module Acn.Ids
     ( -- * Introduction and elimination.
