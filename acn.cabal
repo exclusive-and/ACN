@@ -75,6 +75,7 @@ Library
                       primitive               >= 0.5.0.1  && < 1.0,
                       template-haskell        >= 2.8.0.0  && < 2.18,
                       text                    >= 1.2.2    && < 2.1,
+                      transformers            >= 0.5.2.0  && < 0.7,
                       unordered-containers    >= 0.2.3.3  && < 0.3,
 
   if impl(ghc >= 9.0.0)
@@ -83,12 +84,12 @@ Library
     build-depends:     integer-gmp >=1.0 && <1.1
 
 
-  Exposed-modules:    Netlist.AcnIds
-                      Netlist.AcnPrimitives
-                      Netlist.AcnSyntax
-                      Netlist.AcnToVerilog
-                      Netlist.CoreToAcn
-                      Netlist.Test
+  Exposed-modules:    Acn.Ids
+                      Acn.Primitives
+                      Acn.Syntax
+--                      Netlist.AcnToVerilog
+--                      Netlist.CoreToAcn
+                      Test
 
   Other-Modules:      CeilingLog
 

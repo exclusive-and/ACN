@@ -1,7 +1,7 @@
 
 {-# LANGUAGE DeriveAnyClass #-}
 
-module Netlist.AcnPrimitives
+module Acn.Primitives
     ( HDL (..)
     , BlackBox (..)
     , BlackBoxTemplate

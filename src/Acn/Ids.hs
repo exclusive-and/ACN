@@ -4,39 +4,39 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 
 -- |
--- Module       : Netlist.AcnIds
+-- Module       : Acn.Ids
 -- Description  : Language Agnostic Implementation of ACN Identifiers.
 -- 
-module Netlist.AcnIds
+module Acn.Ids
     ( -- * Introduction and elimination.
-      newAcnIdFromCache#
-    , acnIdToText#
+      newIdFromCache#
+    , idToText#
 
       -- * ACN identifier type.
-    , AcnId (..)
+    , Id (..)
     , verbatimId#
 
       -- * Parsed names.
-    , AcnName (..)
-    , acnNameToText#
+    , Name (..)
+    , nameToText#
     , NameType (..)
 
       -- * Identifier databases.
-    , HasAcnIdSet (..)
-    , AcnIdSet (nameMap, seenIds)
-    , emptyAcnSet
+    , HasIdSet (..)
+    , IdSet (nameMap, seenIds)
+    , emptyIdSet
 
       -- * API and monadic functions.
       -- ** Monadic interface.
-    , AcnIdSetMonad (..)
-    , AcnNameMonad (..)
-    , newAcnName
+    , IdMonad (..)
+    , NameMonad (..)
+    , newName
     , suffix
 
       -- ** Non-monadic interface.
-    , lookupAcnId#
-    , newAcnId#
-    , newAcnName#
+    , lookupId#
+    , newId#
+    , newName#
     , suffix#
     )
   where
@@ -72,35 +72,35 @@ import              GHC.Stack
 -- Instead, backends can apply appropriate sanitization to the name
 -- database independently.
 --
-data AcnId
+data Id
     = ArithmeticId
         Int             -- ^ Key of name in name database.
     | VerbatimId
         Text            -- ^ Exact name of the identifier.
-        (Maybe AcnName) -- ^ Optional parsed version of this id.
+        (Maybe Name)    -- ^ Optional parsed version of this id.
         CallStack       -- ^ Origin.
     deriving (Show, Generic, NFData)
 
 -- |
 -- Get an version of an ACN identifier that can be compared.
 --
-acnKey# :: AcnId -> Either Int Text
+acnKey# :: Id -> Either Int Text
 acnKey# = \case
     ArithmeticId n    -> Left n
     VerbatimId nm _ _ -> Right nm
 
-instance Eq AcnId where
+instance Eq Id where
     (==) = (==) `on` acnKey#
     (/=) = (/=) `on` acnKey#
 
-instance Ord AcnId where
+instance Ord Id where
     compare = compare `on` acnKey#
 
 -- |
 -- Create an ACN identifier verbatim from some text. Doesn't update the
 -- name database, and doesn't sanitize; just use the name exactly as given.
 --
-verbatimId# :: HasCallStack => Text -> AcnId
+verbatimId# :: HasCallStack => Text -> Id
 verbatimId# name =
   let
     originInfo
@@ -113,8 +113,8 @@ verbatimId# name =
 -- |
 -- Normalized names stored in a database indexed by arithmetic identifiers.
 --
-data AcnName
-    = AcnName
+data Name
+    = Name
         { originalName      :: Text
         -- ^ Name as it appears in source with extensions removed.
         , nameNormalized    :: Text
@@ -130,8 +130,8 @@ data AcnName
 -- |
 -- Convert an ACN name to text.
 -- 
-acnNameToText# :: AcnName -> Text
-acnNameToText# nm =
+nameToText# :: Name -> Text
+nameToText# nm =
   let
     exts = map (Text.pack . show) $ reverse $ extensions nm
   in
@@ -140,14 +140,14 @@ acnNameToText# nm =
 -- |
 -- Get the normalized name and extensions of an ACN name as search keys.
 --
-acnNameKey# :: AcnName -> (Text, [Word])
-acnNameKey# (AcnName _ nm exts _ _) = (nm, exts)
+nameKey# :: Name -> (Text, [Word])
+nameKey# (Name _ nm exts _ _) = (nm, exts)
 
-instance Eq AcnName where
-    (==) = (==) `on` acnNameKey#
-    (/=) = (/=) `on` acnNameKey#
+instance Eq Name where
+    (==) = (==) `on` nameKey#
+    (/=) = (/=) `on` nameKey#
 
-instance Hashable AcnName where
+instance Hashable Name where
     hashWithSalt salt = hashWithSalt salt . hash
 
     hash =
@@ -155,28 +155,28 @@ instance Hashable AcnName where
         fuzz factor ext = factor * factor * ext
         hash# nm exts = hash (nm, List.foldl' fuzz 2 exts)
       in
-        uncurry hash# . acnNameKey#
+        uncurry hash# . nameKey#
 
 data NameType = Basic | Extended
     deriving (Show, Generic, NFData)
 
 
-class HasAcnIdSet s where
-    acnIdentifierSet :: Lens' s AcnIdSet
+class HasIdSet s where
+    identifierSet :: Lens' s IdSet
 
-instance HasAcnIdSet AcnIdSet where
-    acnIdentifierSet = ($)
+instance HasIdSet IdSet where
+    identifierSet = ($)
 
 -- |
 -- Name database for assisting ACN identifier generation.
 --
-data AcnIdSet
-    = AcnIdSet
-        { nameMap    :: IntMap AcnName
+data IdSet
+    = IdSet
+        { nameMap    :: IntMap Name
         -- ^ Searchable map of names.
         , idSupply   :: Int
         -- ^ Arithmetic id supply.
-        , seenIds    :: HashSet AcnName
+        , seenIds    :: HashSet Name
         , freshCache :: FreshCache
         }
     deriving Show
@@ -184,7 +184,7 @@ data AcnIdSet
 -- |
 -- An initial name database.
 --
-emptyAcnSet = AcnIdSet
+emptyIdSet = IdSet
     { nameMap    = IntMap.empty
     , idSupply   = 0
     , seenIds    = HashSet.empty
@@ -198,25 +198,25 @@ emptyAcnSet = AcnIdSet
 -- Convert an ACN ID to text, either by looking it up in a database
 -- or emitting it verbatim.
 -- 
-acnIdToText# :: AcnId -> AcnIdSet -> Maybe Text
-acnIdToText# ident idSet = case ident of
+idToText# :: Id -> IdSet -> Maybe Text
+idToText# ident idSet = case ident of
     ArithmeticId n ->
       let
         nm = IntMap.lookup n $ nameMap idSet
       in
-        acnNameToText# <$> nm
+        nameToText# <$> nm
     
     VerbatimId t _ _ -> Just t
 
 -- |
 -- Create and cache a new identifier.
 --
-newAcnIdFromCache#
+newIdFromCache#
     :: HasCallStack
-    => AcnName      -- ^ Normalized identifier name.
-    -> AcnIdSet     -- ^ Working ID database.
-    -> (AcnId, AcnIdSet)
-newAcnIdFromCache# nm idSet =
+    => Name         -- ^ Normalized identifier name.
+    -> IdSet        -- ^ Working ID database.
+    -> (Id, IdSet)
+newIdFromCache# nm idSet =
   let
     -- Record the origin of the new name.
     nmCopy = nm { nameOrigin = originInfo } where
@@ -257,12 +257,12 @@ newAcnIdFromCache# nm idSet =
 
 -- |
 --
-newAcnId#
+newId#
     :: HasCallStack
-    => AcnName
-    -> AcnIdSet
-    -> (AcnId, AcnIdSet)
-newAcnId# nm idSet =
+    => Name
+    -> IdSet
+    -> (Id, IdSet)
+newId# nm idSet =
   let
     -- Check for this name in the set of already seen IDs. If it's already
     -- been seen, extend it and try again. Otherwise, return as-is.
@@ -273,19 +273,19 @@ newAcnId# nm idSet =
         | otherwise
         = nm
   in
-    newAcnIdFromCache# newNm idSet
+    newIdFromCache# newNm idSet
 
 -- |
 -- Cache of most recent extensions indexed by base names and length.
 -- 
 type FreshCache = HashMap Text (IntMap Word)
 
-lookupFreshCache :: FreshCache -> AcnName -> Maybe Word
+lookupFreshCache :: FreshCache -> Name -> Maybe Word
 lookupFreshCache cache nm = do
     section <- HashMap.lookup (nameNormalized nm) cache
     IntMap.lookup (length $ extensions nm) section
 
-updateFreshCache :: FreshCache -> AcnName -> FreshCache
+updateFreshCache :: FreshCache -> Name -> FreshCache
 updateFreshCache cache nm =
   let
     nm'  = nameNormalized nm
@@ -306,8 +306,8 @@ updateFreshCache cache nm =
 -- |
 -- Lookup an ACN identifier in a name database.
 --
-lookupAcnId# :: AcnId -> IntMap AcnName -> Maybe AcnName
-lookupAcnId# ident names =
+lookupId# :: Id -> IntMap Name -> Maybe Name
+lookupId# ident names =
     case ident of
         ArithmeticId n -> IntMap.lookup n names
         VerbatimId {}  -> Nothing
@@ -316,78 +316,61 @@ lookupAcnId# ident names =
 -- |
 -- Types with an ID database that can be used and updated monadically.
 --
-class Monad m => AcnIdSetMonad m where
-    acnIdSetM :: (AcnIdSet -> AcnIdSet) -> m AcnIdSet
+class Monad m => IdMonad m where
+    idSetM :: (IdSet -> IdSet) -> m IdSet
 
 -- |
 -- Monadically apply a function on an ambient ID database.
 --
-withAcnIdSetM
-    :: AcnIdSetMonad m
-    => (AcnIdSet -> (b, AcnIdSet))
+withIdSetM
+    :: IdMonad m
+    => (IdSet -> (b, IdSet))
     -> m b
-withAcnIdSetM f = do
-    idSet <- acnIdSetM id
+withIdSetM f = do
+    idSet <- idSetM id
     let (b, idSet') = f idSet
-    _ <- acnIdSetM (const idSet')
+    _ <- idSetM (const idSet')
     return b
 
-instance HasAcnIdSet s => AcnIdSetMonad (Strict.State s) where
-    acnIdSetM f = do
-        idSet <- Lens.use acnIdentifierSet
-        acnIdentifierSet .= f idSet
-        Lens.use acnIdentifierSet
+instance HasIdSet s => IdMonad (Strict.State s) where
+    idSetM f = do
+        idSet <- Lens.use identifierSet
+        identifierSet .= f idSet
+        Lens.use identifierSet
 
-instance HasAcnIdSet s => AcnIdSetMonad (Lazy.State s) where
-    acnIdSetM f = do
-        idSet <- Lens.use acnIdentifierSet
-        acnIdentifierSet .= f idSet
-        Lens.use acnIdentifierSet
+instance HasIdSet s => IdMonad (Lazy.State s) where
+    idSetM f = do
+        idSet <- Lens.use identifierSet
+        identifierSet .= f idSet
+        Lens.use identifierSet
 
 -- |
 -- Monads with a name normalizer built in.
 --
-class AcnIdSetMonad m => AcnNameMonad m where
-    acnNameNormalizerM :: m (Text -> AcnName)
+class IdMonad m => NameMonad m where
+    nameNormalizerM :: m (Text -> Name)
 
-
--- TODO:
---  * [x] makeBasic
---        newAcnName#
---
---  * [x] suffix
---        suffix#
---
---  * [x] toText
---        acnNameToText#
---
---  * [x] next
---        newAcnIdFromCache#
---
---  * [x] unsafeFromCoreId
---        verbatimId#
---
 
 -- |
 -- Create a new entry in the name database from a string.
 -- 
-newAcnName#
+newName#
     :: HasCallStack
-    => (Text -> AcnName)
+    => (Text -> Name)
     -> Text
-    -> AcnIdSet
-    -> (AcnId, AcnIdSet)
-newAcnName# normalizer nm = newAcnId# (normalizer nm)
+    -> IdSet
+    -> (Id, IdSet)
+newName# normalizer nm = newId# (normalizer nm)
 
-{-# INLINE newAcnName# #-}
+{-# INLINE newName# #-}
 
-newAcnName
-    :: (HasCallStack, AcnNameMonad m)
+newName
+    :: (HasCallStack, NameMonad m)
     => Text
-    -> m AcnId
-newAcnName nm = do
-    normalizer <- acnNameNormalizerM
-    withAcnIdSetM (newAcnName# normalizer nm)
+    -> m Id
+newName nm = do
+    normalizer <- nameNormalizerM
+    withIdSetM (newName# normalizer nm)
 
 -- |
 -- Create a new entry in the name database that combines the base
@@ -395,26 +378,26 @@ newAcnName nm = do
 -- 
 suffix#
     :: HasCallStack
-    => (Text -> AcnName)
-    -> AcnName
+    => (Text -> Name)
+    -> Name
     -> Text
-    -> AcnIdSet
-    -> (AcnId, AcnIdSet)
+    -> IdSet
+    -> (Id, IdSet)
 suffix# normalizer nm0 affix idSet =
   let
     nm1 = normalizer $ originalName nm0 <> "_" <> affix
     nm2 = nm1 { extensions = extensions nm1 <> extensions nm0 }
   in
-    newAcnId# nm2 idSet
+    newId# nm2 idSet
     
 suffix
-    :: (HasCallStack, AcnNameMonad m)
-    => AcnName
+    :: (HasCallStack, NameMonad m)
+    => Name
     -> Text
-    -> m AcnId
+    -> m Id
 suffix nm affix = do
-    normalizer <- acnNameNormalizerM
-    withAcnIdSetM (suffix# normalizer nm affix)
+    normalizer <- nameNormalizerM
+    withIdSetM (suffix# normalizer nm affix)
 
 
 -- FUNNY DEBUG THINGS

@@ -2,13 +2,14 @@
 {-# LANGUAGE DeriveAnyClass #-}
 
 -- |
--- Module       : Netlist.AcnSyntax
+-- Module       : Acn.Syntax
 -- Description  : ACN Language Abstract Syntax
 -- Copyright    : (c) Simon Lovell Bart, 2022
 -- License      : BSD2
 -- Maintainer   : xandgate@gmail.com
 -- Stability    : experimental
 -- 
+--
 -- = Assignment-Creates-Net (ACN) Language Abstract Syntax
 --
 -- This module defines the compiler's internal abstract syntax for
@@ -26,21 +27,18 @@
 -- compiler can automatically determine the properties of every
 -- net (chiefly usage annotations).
 -- 
-module Netlist.AcnSyntax
-    ( -- * Netlist Syntax
+module Acn.Syntax
+    ( -- * Netlist Term Syntax
       -- ** Declarations
-      AcnComponent (..)
-    , AcnDeclaration (..)
-    , AcnAnnotation (..)
-    , AcnBindings
-    , SortedDecl (..)
-    , sortedDeclToDecl
-    , AcnAlternative (..)
+      Component (..)
+    , Assignment (..)
+    , Annotation (..)
+    , CaseAlt (..)
     , PortMap (..)
     , PortDirection (..)
 
       -- ** Expressions
-    , AcnExpression (..)
+    , Expression (..)
     , Literal (..)
     , VerilogBit (..)
 
@@ -48,7 +46,7 @@ module Netlist.AcnSyntax
     , NetDeclarator (..) 
 
       -- * Black Boxes
-    , AcnBlackBox (..)
+    , BlackBox (..)
     , BlackBoxContext (..)
     , BlackBoxArg
 
@@ -66,11 +64,16 @@ module Netlist.AcnSyntax
     , NetField (..)
     , cartesianSize
     , constructorSize
+
+      -- * Declaration Namespace
+    , AcnBindings
+    , SortedDecl (..)
+    , sortedDeclToDecl
     )
   where
 
-import              Netlist.AcnIds
-import              Netlist.AcnPrimitives
+import qualified    Acn.Ids as Acn
+import qualified    Acn.Primitives as Acn
 
 import              Control.DeepSeq
 import              Data.Map (Map)
@@ -88,42 +91,42 @@ import              CeilingLog
 -- |
 -- ACN top-level component.
 --
-data AcnComponent
-    = AcnComponent
-        { componentName :: !AcnId           -- ^ Name of the component.
+data Component
+    = Component
+        { componentName :: !Acn.Id          -- ^ Name of the component.
         , inputs        :: [NetDeclarator]  -- ^ Input ports.
-        , logic         :: [AcnDeclaration] -- ^ Internal logic.
-        , outputs       :: [AcnDeclaration] -- ^ Output ports\/logic.
+        , logic         :: [Assignment]     -- ^ Internal logic.
+        , outputs       :: [Assignment]     -- ^ Output ports\/logic.
         }
     deriving (Show, Generic, NFData)
 
 -- |
--- Judgement-level declarations which create and drive nets.
+-- Assignment declarations which create and drive nets.
 --
-data AcnDeclaration
+data Assignment
     -- |
     -- Prototypical assignment: creates a net driven by an expression.
     = Assignment
         !NetDeclarator          -- ^ Created result net.
-        !AcnExpression          -- ^ Expression to assign.
+        !Expression             -- ^ Expression to assign.
 
     -- |
     -- Conditional assignment. Creates a net driven by one of many
     -- possible alternate expressions.
     | CondAssignment
         !NetDeclarator          -- ^ Created result net.
-        !AcnExpression          -- ^ Expression to scrutinize.
+        !Expression             -- ^ Expression to scrutinize.
         !NetType                -- ^ Scrutinee type.
-        [AcnAlternative]        -- ^ Alternatives to choose from.
+        [CaseAlt]               -- ^ Alternatives to choose from.
 
     -- |
     -- Subcomponent instantiation. Creates an arbitrary number of nets,
     -- each driven by one of the outputs of the instantiated component.
-    | InstDecl
+    | InstAssignment
         [NetDeclarator]         -- ^ Created result nets.
         [Attr']                 -- ^ Instance attributes.
-        !AcnId                  -- ^ Component name.
-        !AcnId                  -- ^ Instance name.
+        !Acn.Id                 -- ^ Component name.
+        !Acn.Id                 -- ^ Instance name.
         [()]                    -- ^ Compile-time parameters.
         PortMap                 -- ^ I\/O port configuration.
 
@@ -131,24 +134,24 @@ data AcnDeclaration
     -- Black box instantiation. Creates an arbitrary number of nets,
     -- each driven by one of the outputs of some magical primitive.
     | BlackBoxDecl
-        !AcnBlackBox            -- ^ Primitive to defer.
+        !BlackBox               -- ^ Primitive to defer.
         BlackBoxContext         -- ^ Instantiation context.
 
     -- |
     -- Annotated declaration(s).
     | AnnotatedDecl
-        !AcnAnnotation          -- ^ Annotation.
-        [AcnDeclaration]        -- ^ Declaration(s) to be annotated.
+        !Annotation             -- ^ Annotation.
+        [Assignment]            -- ^ Declaration(s) to be annotated.
     deriving Show
 
-instance NFData AcnDeclaration where
+instance NFData Assignment where
     rnf x = x `seq` ()
 
 -- |
 -- Annotations that can be inserted in or around declarations to supplement
 -- them in synthesis.
 -- 
-data AcnAnnotation
+data Annotation
     = Comment   Text -- ^ Comment.
     | Directive Text -- ^ Synthesizer directive.
     | Condition Text -- ^ Synthesizer preprocessor condition.
@@ -162,52 +165,26 @@ data AcnAnnotation
 data NetDeclarator
     = NetDeclarator
         { netComment    :: !(Maybe Text)        -- ^ Optional comment.
-        , netName       :: !AcnId               -- ^ Name of the net.
+        , netName       :: !Acn.Id              -- ^ Name of the net.
         , netType       :: !NetType             -- ^ Net's representable type.
-        , initVal       :: Maybe AcnExpression  -- ^ Optional initial value.
+        , initVal       :: Maybe Expression     -- ^ Optional initial value.
         }
     deriving (Show, Generic, NFData)
 
 -- |
--- Map of ACN identifiers to the declarations that create them.
---
--- N.B. that it's possible, but rare, for multiple IDs to map to the same
--- declaration (e.g. in the case of instance declarations).
---
-type AcnBindings = Map AcnId SortedDecl
-
--- |
--- Region-annotated declarations and declarators. Helpful for optimizing,
--- as some optimizations are only applicable to certain regions.
---
-data SortedDecl
-    = Input  NetDeclarator
-    | Logic  AcnDeclaration
-    | Output AcnDeclaration
-
--- |
--- Get an ACN declaration from a region-sorted declaration/declarator.
---
-sortedDeclToDecl :: SortedDecl -> Maybe AcnDeclaration
-sortedDeclToDecl = \case
-    Input _  -> Nothing
-    Logic d  -> Just d
-    Output d -> Just d
-
--- |
 -- One branch of a conditional assignment declaration.
 --
-data AcnAlternative
+data CaseAlt
     -- |
     -- Default branch.
     = Default
-        AcnExpression   -- ^ Value to assign by default.
+        Expression  -- ^ Value to assign by default.
 
     -- |
     -- Branch dependent on a condition.
     | Dependent
-        Literal         -- ^ Condition.
-        AcnExpression   -- ^ Value to assign.
+        Literal     -- ^ Condition.
+        Expression  -- ^ Value to assign.
     deriving Show
    
 -- |
@@ -215,11 +192,11 @@ data AcnAlternative
 --
 data PortMap
     = IndexedPortMap
-        [ (PortDirection, NetType, AcnExpression) ]
+        [ (PortDirection, NetType, Expression) ]
     -- ^ Association in-order: the @n@-th port mapping corresponds with the
     -- @n@-th input of the component.
     | NamedPortMap
-        [ (AcnId, PortDirection, NetType, AcnExpression) ]
+        [ (Acn.Id, PortDirection, NetType, Expression) ]
     -- ^ Association by name: port mapping @(id, _, ty, _)@ corresponds to
     -- net @NetDeclaration _ id ty _@ in the component.
     deriving Show
@@ -231,7 +208,7 @@ data PortDirection = In | Out
 -- |
 -- Typed, continuous, value-level terms.
 --
-data AcnExpression
+data Expression
     -- |
     -- Fixed or dynamic-sized, typed literals.
     = Literal
@@ -240,28 +217,28 @@ data AcnExpression
     
     -- |
     -- Variable reference.
-    | Identifier !AcnId
+    | Identifier !Acn.Id
     
     -- |
     -- Construct a datatype from a single fixed constructor index.
     | DataCon
         !NetType                -- ^ Type to be constructed.
         !Int                    -- ^ Index of constructor to use.
-        [AcnExpression]         -- ^ Constructor arguments.
+        [Expression]            -- ^ Constructor arguments.
     
     -- |
     -- Construct a cartesian datatype, with the constructor selected
     -- dynamically by an expression.
     | SuperDataCon
         !CartesianType          -- ^ Type to be constructed.
-        !AcnExpression          -- ^ Constructor encoding.
-        [Maybe AcnExpression]   -- ^ All fields for this type.
+        !Expression             -- ^ Constructor encoding.
+        [Maybe Expression]      -- ^ All fields for this type.
     
     -- |
     -- Project a field of a Cartesian datatype (primitive types
     -- don't have well-defined projections in ACN).
     | Projection
-        !AcnExpression          -- ^ Source expression.
+        !Expression             -- ^ Source expression.
         !CartesianType          -- ^ Type of source expression.
         !Int                    -- ^ Constructor to project from.
         !Int                    -- ^ Field to project.
@@ -269,19 +246,19 @@ data AcnExpression
     -- |
     -- Slice raw bit representation of a source expression.
     | Slice
-        !AcnExpression          -- ^ Source expression.
+        !Expression             -- ^ Source expression.
         !Int                    -- ^ High bit index of range.
         !Int                    -- ^ Low bit index of range.
     
     -- |
     --
     | BlackBoxE
-        !AcnBlackBox            -- ^ Primitive to defer.
+        !BlackBox               -- ^ Primitive to defer.
         BlackBoxContext         -- ^ Calling context.
         !Bool                   -- ^ Should enclose in parentheses?
     deriving Show
 
-instance NFData AcnExpression where
+instance NFData Expression where
     rnf x = x `seq` ()
 
 -- |
@@ -311,13 +288,13 @@ data VerilogBit
 -- |
 -- The contents of a primitive black box in an ACN declaration.
 --
-data AcnBlackBox
+data BlackBox
     = PrimBlackBox
         { boxName       :: Text
-        , boxLibraries  :: [BlackBoxTemplate]
-        , boxImports    :: [BlackBoxTemplate]
-        , boxQsys       :: [((Text, Text), BlackBox)]
-        , boxTokens     :: BlackBox
+        , boxLibraries  :: [Acn.BlackBoxTemplate]
+        , boxImports    :: [Acn.BlackBoxTemplate]
+        , boxQsys       :: [((Text, Text), Acn.BlackBox)]
+        , boxTokens     :: Acn.BlackBox
         }
     deriving Show
     
@@ -339,7 +316,7 @@ data BlackBoxContext
 -- |
 -- Hardware black boxes may accept expressions or type-level arguments.
 --
-type BlackBoxArg = Either (AcnExpression, NetType) NetTyCon
+type BlackBoxArg = Either (Expression, NetType) NetTyCon
 
 
 -- |
@@ -364,7 +341,7 @@ data NetTyCon
         -- ^ The representable netlist type itself.
         }
     | Proxy         (Maybe NetTyCon)
-    | KnownDomain   !Domain
+    | KnownDomain   !Acn.Domain
     | Integer       !Int
     | String        !String
     deriving (Show, Generic, NFData)
@@ -378,9 +355,9 @@ data NetType
     -- translator. Since the builtin type translator will never produce
     -- an annotated 'NetTyCon', we can safely move annotated types into the
     -- realm of 'NetType'.
-    | Clock     !DomainName
-    | Reset     !DomainName
-    | Enable    !DomainName
+    | Clock     !Acn.DomainName
+    | Reset     !Acn.DomainName
+    | Enable    !Acn.DomainName
     | Boolean
     -- ^ Strictly 2-valued Booleans.
     | Bit
@@ -501,7 +478,7 @@ netTypeSize = \case
 --
 data CartesianType
     = CartesianType
-        { typeName      :: !AcnId
+        { typeName      :: !Acn.Id
         , constructors  :: [NetConstructor]
         , fields        :: [NetField]
         }
@@ -509,7 +486,7 @@ data CartesianType
 
 data NetConstructor
     = NetConstructor
-        { consName      :: !AcnId
+        { consName      :: !Acn.Id
         , fieldIndices  :: [Int]
         }
     deriving (Show, Generic, NFData)
@@ -539,5 +516,30 @@ constructorSize =
     fromMaybe 0 . clogBase 2 . toInteger . length . constructors
 
 
+-- |
+-- Map of ACN identifiers to the declarations that create them.
+--
+-- N.B. that it's possible, but rare, for multiple IDs to map to the same
+-- declaration (e.g. in the case of instance declarations).
+--
+type AcnBindings = Map Acn.Id SortedDecl
+
+-- |
+-- Region-annotated declarations and declarators. Helpful for optimizing,
+-- as some optimizations are only applicable to certain regions.
+--
+data SortedDecl
+    = Input  NetDeclarator
+    | Logic  Assignment
+    | Output Assignment
+
+-- |
+-- Get an ACN declaration from a region-sorted declaration/declarator.
+--
+sortedDeclToDecl :: SortedDecl -> Maybe Assignment
+sortedDeclToDecl = \case
+    Input _  -> Nothing
+    Logic d  -> Just d
+    Output d -> Just d
     
 
