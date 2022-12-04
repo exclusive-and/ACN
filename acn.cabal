@@ -89,7 +89,11 @@ Library
                       Acn.Syntax
 --                      Netlist.AcnToVerilog
 --                      Netlist.CoreToAcn
-                      Test
+                      AcnTest
+                      Verilog.Backend
+                      Verilog.Ids
+                      Verilog.Syntax
+                      VerilogTest
 
   Other-Modules:      CeilingLog
 
