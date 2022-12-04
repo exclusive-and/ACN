@@ -11,38 +11,29 @@
 -- 
 module Acn.Ids
     ( -- * Introduction and elimination.
-      newIdFromCache#
-    , idToText#
+      newIdFromCache#, idToText#
 
       -- * ACN identifier type.
     , Id (..)
     , verbatimId#
 
       -- * Parsed names.
-    , Name (..)
+    , Name (..), NameType (..)
     , nameToText#
-    , NameType (..)
 
       -- * Identifier databases.
-    , HasIdSet (..)
-    , IdSet (nameMap, seenIds)
+    , HasIdSet (..), IdSet (nameMap, seenIds)
     , emptyIdSet
 
       -- * API and monadic functions.
-      -- ** Monadic interface.
-    , IdMonad (..)
-    , NameMonad (..)
-    , newName
-    , suffix
-
-      -- ** Non-monadic interface.
-    , lookupId#
-    , newId#
-    , newName#
-    , suffix#
+    , IdMonad (..), NameMonad (..)
+    , newName#, newName
+    , suffix#, suffix
     )
   where
 
+import              Acn.CompilerPass
+  
 import              Control.DeepSeq
 import              Control.Lens (Lens', (.=))
 import qualified    Control.Lens as Lens
@@ -172,7 +163,7 @@ instance HasIdSet IdSet where
 -- |
 -- Name database for assisting ACN identifier generation.
 --
-data IdSet
+data IdSet pass
     = IdSet
         { nameMap    :: IntMap Name
         -- ^ Searchable map of names.
