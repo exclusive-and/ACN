@@ -84,7 +84,8 @@ Library
     build-depends:     integer-gmp >=1.0 && <1.1
 
 
-  Exposed-modules:    Acn.Ids
+  Exposed-modules:    Acn.CompilerPass
+                      Acn.Ids
                       Acn.Primitives
                       Acn.Syntax
 --                      Netlist.AcnToVerilog

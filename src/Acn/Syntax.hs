@@ -31,48 +31,36 @@
 module Acn.Syntax
     ( -- * Netlist Term Syntax
       -- ** Declarations
-      Component (..)
-    , Assignment (..)
-    , Annotation (..)
-    , CaseAlt (..)
-    , PortMap (..)
-    , PortDirection (..)
-
+      Component (..), Assignment (..)
+    , Annotation (..), CaseAlt (..)
+    , PortMap (..), PortDirection (..)
       -- ** Expressions
     , Expression (..)
-    , Literal (..)
-    , VerilogBit (..)
-
+    , Literal (..), VerilogBit (..)
       -- ** Net Declarators
     , Declarator (..)
 
       -- * Black Boxes
     , BlackBox (..)
-    , BlackBoxContext (..)
-    , BlackBoxArg
+    , BlackBoxContext (..), BlackBoxArg
 
       -- * Netlist Types
-    , NetTyCon (..)
-
+    , NetTypeLike (..)
       -- ** Representable Netlist Types
-    , NetType (..)
-    , Attr' (..)
+    , NetType (..), Attr' (..)
     , netTypeSize
-
       -- ** Cartesian Types
     , CartesianType (..)
-    , NetConstructor (..)
-    , NetField (..)
-    , cartesianSize
-    , constructorSize
-
+    , NetConstructor (..), NetField (..)
+    , cartesianSize, constructorSize
+    
       -- * Declaration Namespace
-    , AcnBindings
-    , SortedDecl (..)
+    , AcnBindings, SortedDecl (..)
     , sortedDeclToDecl
     )
   where
 
+import              Acn.CompilerPass
 import qualified    Acn.Ids as Acn
 import qualified    Acn.Primitives as Acn
 
@@ -92,60 +80,60 @@ import              CeilingLog
 -- |
 -- ACN top-level component.
 --
-data Component
+data Component pass
     = Component
-        { componentName :: !Acn.Id      -- ^ Name of the component.
-        , inputs        :: [Declarator] -- ^ Input ports.
-        , logic         :: [Assignment] -- ^ Internal logic.
-        , outputs       :: [Assignment] -- ^ Output ports\/logic.
+        { componentName :: !Acn.Id              -- ^ Name of the component.
+        , inputs        :: [Declarator pass]    -- ^ Input ports.
+        , logic         :: [Assignment pass]    -- ^ Internal logic.
+        , outputs       :: [Assignment pass]    -- ^ Output ports\/logic.
         }
     deriving (Show, Generic, NFData)
 
 -- |
 -- Assignment declarations which create and drive nets.
 --
-data Assignment
+data Assignment pass
     -- |
     -- Prototypical assignment: creates a net driven by an expression.
     = Assignment
-        !Declarator     -- ^ Created result net.
-        !Expression     -- ^ Expression to assign.
+        !Declarator pass    -- ^ Created result net.
+        !Expression pass    -- ^ Expression to assign.
 
     -- |
     -- Conditional assignment. Creates a net driven by one of many
     -- possible alternate expressions.
     | CondAssignment
-        !Declarator     -- ^ Created result net.
-        !Expression     -- ^ Expression to scrutinize.
-        !NetType        -- ^ Scrutinee type.
-        [CaseAlt]       -- ^ Alternatives to choose from.
+        !Declarator pass    -- ^ Created result net.
+        !Expression pass    -- ^ Expression to scrutinize.
+        !SynType    pass    -- ^ Scrutinee type.
+        [CaseAlt pass]      -- ^ Alternatives to choose from.
 
     -- |
     -- Subcomponent instantiation. Creates an arbitrary number of nets,
     -- each driven by one of the outputs of the instantiated component.
     | InstDecl
-        [Declarator]    -- ^ Created result nets.
+        [Declarator pass]   -- ^ Created result nets.
         [Attr']         -- ^ Instance attributes.
         !Acn.Id         -- ^ Component name.
         !Acn.Id         -- ^ Instance name.
         [()]            -- ^ Compile-time parameters.
-        PortMap         -- ^ I\/O port configuration.
+        PortMap pass    -- ^ I\/O port configuration.
 
     -- |
     -- Black box instantiation. Creates an arbitrary number of nets,
     -- each driven by one of the outputs of some magical primitive.
     | BlackBoxDecl
-        !BlackBox       -- ^ Primitive to defer.
-        BlackBoxContext -- ^ Instantiation context.
+        !BlackBox               -- ^ Primitive to defer.
+        BlackBoxContext pass    -- ^ Instantiation context.
 
     -- |
     -- Annotated declaration(s).
     | AnnotatedDecl
-        !Annotation     -- ^ Annotation.
-        [Assignment]    -- ^ Declaration(s) to be annotated.
+        !Annotation         -- ^ Annotation.
+        [Assignment pass]   -- ^ Declaration(s) to be annotated.
     deriving Show
 
-instance NFData Assignment where
+instance NFData (Assignment pass) where
     rnf x = x `seq` ()
 
 -- |
@@ -163,41 +151,40 @@ data Annotation
 -- Usage annotations should be decided by examining the declarations that
 -- create the nets.
 --
-data Declarator
+data Declarator pass
     = Declarator
-        { netComment    :: !(Maybe Text)    -- ^ Optional comment.
-        , netName       :: !Acn.Id          -- ^ Name of the net.
-        , netType       :: !NetType         -- ^ Net's representable type.
-        , initVal       :: Maybe Expression -- ^ Optional initial value.
-        }
+        !(Maybe Text)               -- ^ Optional comment.
+        !Acn.Id                     -- ^ Name of the net.
+        !(SynType pass)             -- ^ Net's representable type.
+        (Maybe (Expression pass))   -- ^ Optional initial value.
     deriving (Show, Generic, NFData)
 
 -- |
 -- One branch of a conditional assignment declaration.
 --
-data CaseAlt
+data CaseAlt pass
     -- |
     -- Default branch.
     = Default
-        Expression  -- ^ Value to assign by default.
+        Expression pass -- ^ Value to assign by default.
 
     -- |
     -- Branch dependent on a condition.
     | Dependent
-        Literal     -- ^ Condition.
-        Expression  -- ^ Value to assign.
+        Literal pass    -- ^ Condition.
+        Expression pass -- ^ Value to assign.
     deriving Show
    
 -- |
 -- Map expressions to input or output nets of an ACN component.
 --
-data PortMap
+data PortMap pass
     = IndexedPortMap
-        [ (PortDirection, NetType, Expression) ]
+        [ (PortDirection, SynType pass, Expression pass) ]
     -- ^ Association in-order: the @n@-th port mapping corresponds with the
     -- @n@-th input of the component.
     | NamedPortMap
-        [ (Acn.Id, PortDirection, NetType, Expression) ]
+        [ (Acn.Id, PortDirection, NetType pass, Expression pass) ]
     -- ^ Association by name: port mapping @(id, _, ty, _)@ corresponds to
     -- net @NetDeclaration _ id ty _@ in the component.
     deriving Show
@@ -209,12 +196,12 @@ data PortDirection = In | Out
 -- |
 -- Typed, continuous, value-level terms.
 --
-data Expression
+data Expression pass
     -- |
     -- Fixed or dynamic-sized, typed literals.
     = Literal
-        !(Maybe NetType)    -- ^ Literal size and type.
-        !Literal            -- ^ Literal contents.
+        !(Maybe (SynType pass)) -- ^ Literal size and type.
+        !Literal                -- ^ Literal contents.
     
     -- |
     -- Variable reference.
@@ -223,23 +210,23 @@ data Expression
     -- |
     -- Construct a datatype from a single fixed constructor index.
     | DataCon
-        !NetType            -- ^ Type to be constructed.
-        !Int                -- ^ Index of constructor to use.
-        [Expression]        -- ^ Constructor arguments.
+        !(SynType pass)         -- ^ Type to be constructed.
+        !Int                    -- ^ Index of constructor to use.
+        [Expression pass]       -- ^ Constructor arguments.
     
     -- |
     -- Construct a cartesian datatype, with the constructor selected
     -- dynamically by an expression.
     | SuperDataCon
-        !CartesianType      -- ^ Type to be constructed.
-        !Expression         -- ^ Constructor encoding.
-        [Maybe Expression]  -- ^ All fields for this type.
+        !CartesianType              -- ^ Type to be constructed.
+        !Expression pass            -- ^ Constructor encoding.
+        [Maybe (Expression pass)]   -- ^ All fields for this type.
     
     -- |
     -- Project a field of a Cartesian datatype (primitive types
     -- don't have well-defined projections in ACN).
     | Projection
-        !Expression         -- ^ Source expression.
+        !(Expression pass)  -- ^ Source expression.
         !CartesianType      -- ^ Type of source expression.
         !Int                -- ^ Constructor to project from.
         !Int                -- ^ Field to project.
@@ -247,16 +234,16 @@ data Expression
     -- |
     -- Slice raw bit representation of a source expression.
     | Slice
-        !Expression         -- ^ Source expression.
+        !(Expression pass)  -- ^ Source expression.
         !Int                -- ^ High bit index of range.
         !Int                -- ^ Low bit index of range.
     
     -- |
     --
     | BlackBoxE
-        !BlackBox           -- ^ Primitive to defer.
-        BlackBoxContext     -- ^ Calling context.
-        !Bool               -- ^ Should enclose in parentheses?
+        !BlackBox               -- ^ Primitive to defer.
+        (BlackBoxContext pass)  -- ^ Calling context.
+        !Bool                   -- ^ Should enclose in parentheses?
     deriving Show
 
 instance NFData Expression where
@@ -321,7 +308,7 @@ type BlackBoxArg = Either (Expression, NetType) NetTyCon
 
 
 -- |
--- Net type-like constructors.
+-- Things that can be synthesis-checked.
 --
 -- The internal netlist language has several /type-like/ things:
 --
@@ -333,18 +320,11 @@ type BlackBoxArg = Either (Expression, NetType) NetTyCon
 -- Only 'HWTyCon's may be used in codegen, but the other tycons can be passed
 -- to the blackbox instantiator as metadata to guide primitive generation.
 --
-data NetTyCon
-    = HWTyCon
-        { netTyConName  :: !Text
-        -- ^ The generated name of this type. To be emitted by the VHDL
-        -- backend.
-        , hwTypeRhs     :: !NetType
-        -- ^ The representable netlist type itself.
-        }
-    | Proxy         (Maybe NetTyCon)
-    | KnownDomain   !Acn.Domain
-    | Integer       !Int
-    | String        !String
+data SynTyThing
+    = ARepresentableType    !NetType
+    | AProxyThing           (Maybe NetTyThing)
+    | AKnownDomain          !Acn.Domain
+    | ALiftedExpression     !Expression !NetType
     deriving (Show, Generic, NFData)
     
 -- |
@@ -422,6 +402,30 @@ netTypeSize = \case
     BiDirectional Out _ -> 0
     File                -> 32
 
+-- |
+-- Types that must pass synthesis-checking.
+--
+type family SynType pass
+
+type instance SynType AcnConv = NetTypeLike
+type instance SynType AcnSynC = NetType
+type instance SynType AcnNorm = NetType
+type instance SynType AcnDone = NetType
+
+-- |
+-- Type-level elements which may not pass synthesis-checking, but must
+-- obey some type laws (e.g. no domains, no proxies) to be compatible
+-- with HDL generation phases.
+-- 
+-- These are generally VHDL generics and Verilog parameters respectively.
+--
+type family GenType pass
+
+type instance GenType AcnConv = NetTypeLike
+type instance GenType AcnSynC = (Expression AcnSynC, NetType)
+type instance GenType AcnNorm = (Expression AcnSynC, NetType)
+type instance GenType AcnDone = (Expression AcnSynC, NetType)
+    
     
 -- |
 -- Programmer-defined algebraic data types. Sum-of-product types get
