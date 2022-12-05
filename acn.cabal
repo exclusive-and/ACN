@@ -39,6 +39,7 @@ common common-options
                       StandaloneDeriving
                       TupleSections
                       TypeApplications
+                      TypeFamilies
                       TypeOperators
                       ViewPatterns
 

@@ -1,5 +1,9 @@
 
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 -----------------------------------------------------------
 -- |
@@ -45,7 +49,7 @@ module Acn.Syntax
     , BlackBoxContext (..), BlackBoxArg
 
       -- * Netlist Types
-    , NetTypeLike (..)
+    , SynTyThing (..)
       -- ** Representable Netlist Types
     , NetType (..), Attr' (..)
     , netTypeSize
@@ -65,6 +69,7 @@ import qualified    Acn.Ids as Acn
 import qualified    Acn.Primitives as Acn
 
 import              Control.DeepSeq
+import              Data.Kind
 import              Data.Map (Map)
 import              Data.Maybe
 import              Data.Text (Text)
@@ -87,7 +92,12 @@ data Component pass
         , logic         :: [Assignment pass]    -- ^ Internal logic.
         , outputs       :: [Assignment pass]    -- ^ Output ports\/logic.
         }
-    deriving (Show, Generic, NFData)
+    deriving Generic
+
+deriving instance SynCkHas Show pass => Show (Component pass)
+
+deriving instance SynCkHas NFData pass => NFData (Component pass)
+
 
 -- |
 -- Assignment declarations which create and drive nets.
@@ -96,16 +106,16 @@ data Assignment pass
     -- |
     -- Prototypical assignment: creates a net driven by an expression.
     = Assignment
-        !Declarator pass    -- ^ Created result net.
-        !Expression pass    -- ^ Expression to assign.
+        !(Declarator pass)  -- ^ Created result net.
+        !(Expression pass)  -- ^ Expression to assign.
 
     -- |
     -- Conditional assignment. Creates a net driven by one of many
     -- possible alternate expressions.
     | CondAssignment
-        !Declarator pass    -- ^ Created result net.
-        !Expression pass    -- ^ Expression to scrutinize.
-        !SynType    pass    -- ^ Scrutinee type.
+        !(Declarator pass)  -- ^ Created result net.
+        !(Expression pass)  -- ^ Expression to scrutinize.
+        !(SynType    pass)  -- ^ Scrutinee type.
         [CaseAlt pass]      -- ^ Alternatives to choose from.
 
     -- |
@@ -113,25 +123,26 @@ data Assignment pass
     -- each driven by one of the outputs of the instantiated component.
     | InstDecl
         [Declarator pass]   -- ^ Created result nets.
-        [Attr']         -- ^ Instance attributes.
-        !Acn.Id         -- ^ Component name.
-        !Acn.Id         -- ^ Instance name.
-        [()]            -- ^ Compile-time parameters.
-        PortMap pass    -- ^ I\/O port configuration.
+        [Attr']             -- ^ Instance attributes.
+        !Acn.Id             -- ^ Component name.
+        !Acn.Id             -- ^ Instance name.
+        [()]                -- ^ Compile-time parameters.
+        (PortMap pass)      -- ^ I\/O port configuration.
 
     -- |
     -- Black box instantiation. Creates an arbitrary number of nets,
     -- each driven by one of the outputs of some magical primitive.
     | BlackBoxDecl
         !BlackBox               -- ^ Primitive to defer.
-        BlackBoxContext pass    -- ^ Instantiation context.
+        (BlackBoxContext pass)  -- ^ Instantiation context.
 
     -- |
     -- Annotated declaration(s).
     | AnnotatedDecl
         !Annotation         -- ^ Annotation.
         [Assignment pass]   -- ^ Declaration(s) to be annotated.
-    deriving Show
+
+deriving instance SynCkHas Show pass => Show (Assignment pass)
 
 instance NFData (Assignment pass) where
     rnf x = x `seq` ()
@@ -157,7 +168,13 @@ data Declarator pass
         !Acn.Id                     -- ^ Name of the net.
         !(SynType pass)             -- ^ Net's representable type.
         (Maybe (Expression pass))   -- ^ Optional initial value.
-    deriving (Show, Generic, NFData)
+    deriving Generic
+--  deriving (Show, NFData)
+
+deriving instance SynCkHas Show pass => Show (Declarator pass)
+
+deriving instance SynCkHas NFData pass => NFData (Declarator pass)
+
 
 -- |
 -- One branch of a conditional assignment declaration.
@@ -166,14 +183,15 @@ data CaseAlt pass
     -- |
     -- Default branch.
     = Default
-        Expression pass -- ^ Value to assign by default.
+        (Expression pass)   -- ^ Value to assign by default.
 
     -- |
     -- Branch dependent on a condition.
     | Dependent
-        Literal pass    -- ^ Condition.
-        Expression pass -- ^ Value to assign.
-    deriving Show
+        Literal             -- ^ Condition.
+        (Expression pass)   -- ^ Value to assign.
+
+deriving instance SynCkHas Show pass => Show (CaseAlt pass)
    
 -- |
 -- Map expressions to input or output nets of an ACN component.
@@ -184,10 +202,11 @@ data PortMap pass
     -- ^ Association in-order: the @n@-th port mapping corresponds with the
     -- @n@-th input of the component.
     | NamedPortMap
-        [ (Acn.Id, PortDirection, NetType pass, Expression pass) ]
+        [ (Acn.Id, PortDirection, SynType pass, Expression pass) ]
     -- ^ Association by name: port mapping @(id, _, ty, _)@ corresponds to
     -- net @NetDeclaration _ id ty _@ in the component.
-    deriving Show
+
+deriving instance SynCkHas Show pass => Show (PortMap pass)
 
 data PortDirection = In | Out
     deriving (Show, Generic, NFData)
@@ -219,7 +238,7 @@ data Expression pass
     -- dynamically by an expression.
     | SuperDataCon
         !CartesianType              -- ^ Type to be constructed.
-        !Expression pass            -- ^ Constructor encoding.
+        !(Expression pass)          -- ^ Constructor encoding.
         [Maybe (Expression pass)]   -- ^ All fields for this type.
     
     -- |
@@ -244,9 +263,10 @@ data Expression pass
         !BlackBox               -- ^ Primitive to defer.
         (BlackBoxContext pass)  -- ^ Calling context.
         !Bool                   -- ^ Should enclose in parentheses?
-    deriving Show
 
-instance NFData Expression where
+deriving instance SynCkHas Show pass => Show (Expression pass)
+
+instance NFData (Expression pass) where
     rnf x = x `seq` ()
 
 -- |
@@ -292,19 +312,20 @@ data BlackBox
 -- the surrounding circuit, as well as the declaration for any result nets
 -- we wish to expose.
 --
-data BlackBoxContext
+data BlackBoxContext pass
     = BlackBoxContext
-        { boxTargets    :: [Declarator]
+        { boxTargets    :: [Declarator pass]
         -- ^ Result declarations.
-        , boxInputs     :: [BlackBoxArg]
+        , boxInputs     :: [BlackBoxArg pass]
         -- ^ Black box arguments.
         }
-    deriving Show
+
+deriving instance SynCkHas Show pass => Show (BlackBoxContext pass)
 
 -- |
 -- Hardware black boxes may accept expressions or type-level arguments.
 --
-type BlackBoxArg = Either (Expression, NetType) NetTyCon
+type BlackBoxArg pass = Either (Expression pass, NetType) SynTyThing
 
 
 -- |
@@ -322,9 +343,9 @@ type BlackBoxArg = Either (Expression, NetType) NetTyCon
 --
 data SynTyThing
     = ARepresentableType    !NetType
-    | AProxyThing           (Maybe NetTyThing)
+    | AProxyThing           (Maybe SynTyThing)
     | AKnownDomain          !Acn.Domain
-    | ALiftedExpression     !Expression !NetType
+    | ALiftedExpression     !(Expression AcnConv) !NetType
     deriving (Show, Generic, NFData)
     
 -- |
@@ -407,10 +428,10 @@ netTypeSize = \case
 --
 type family SynType pass
 
-type instance SynType AcnConv = NetTypeLike
-type instance SynType AcnSynC = NetType
-type instance SynType AcnNorm = NetType
-type instance SynType AcnDone = NetType
+type instance SynType AcnConv  = SynTyThing
+type instance SynType AcnSynCk = NetType
+type instance SynType AcnNorm  = NetType
+type instance SynType AcnDone  = NetType
 
 -- |
 -- Type-level elements which may not pass synthesis-checking, but must
@@ -421,11 +442,18 @@ type instance SynType AcnDone = NetType
 --
 type family GenType pass
 
-type instance GenType AcnConv = NetTypeLike
-type instance GenType AcnSynC = (Expression AcnSynC, NetType)
-type instance GenType AcnNorm = (Expression AcnSynC, NetType)
-type instance GenType AcnDone = (Expression AcnSynC, NetType)
-    
+type instance GenType AcnConv  = SynTyThing
+type instance GenType AcnSynCk = (Expression AcnSynCk, NetType)
+type instance GenType AcnNorm  = (Expression AcnNorm , NetType)
+type instance GenType AcnDone  = (Expression AcnDone , NetType)
+
+-- |
+-- Constraints on the synthesis-checked types. Convenient for providing
+-- instance derivations for anything that contains a checked field.
+--
+type SynCkHas (constraint :: Type -> Constraint) (pass :: Type)
+    = (constraint (SynType pass), constraint (GenType pass))
+
     
 -- |
 -- Programmer-defined algebraic data types. Sum-of-product types get
@@ -527,24 +555,23 @@ constructorSize =
 -- N.B. that it's possible, but rare, for multiple IDs to map to the same
 -- declaration (e.g. in the case of instance declarations).
 --
-type AcnBindings = Map Acn.Id SortedDecl
+type AcnBindings pass = Map Acn.Id (SortedDecl pass)
 
 -- |
 -- Region-annotated declarations and declarators. Helpful for optimizing,
 -- as some optimizations are only applicable to certain regions.
 --
-data SortedDecl
-    = Input  Declarator
-    | Logic  Assignment
-    | Output Assignment
+data SortedDecl pass
+    = Input  (Declarator pass)
+    | Logic  (Assignment pass)
+    | Output (Assignment pass)
 
 -- |
 -- Get an ACN declaration from a region-sorted declaration/declarator.
 --
-sortedDeclToDecl :: SortedDecl -> Maybe Assignment
+sortedDeclToDecl :: SortedDecl pass -> Maybe (Assignment pass)
 sortedDeclToDecl = \case
     Input _  -> Nothing
     Logic d  -> Just d
     Output d -> Just d
     
-
